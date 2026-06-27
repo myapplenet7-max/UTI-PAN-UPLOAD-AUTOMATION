@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
-import { callClaude, fileToBase64 } from '../lib/utils'
+import { callGemini, fileToBase64 } from '../lib/utils'
 
 export default function FormFiller({ apiKey }: { apiKey: string }) {
   const [file, setFile] = useState<File | null>(null)
@@ -14,7 +14,7 @@ export default function FormFiller({ apiKey }: { apiKey: string }) {
     try {
       const b64 = await fileToBase64(file)
       const prompt = `This is a filled UTI PAN application form. Extract ALL visible form fields and their values. Return as JSON with field names as keys. Include: applicant_name, father_name, mother_name, date_of_birth, gender, aadhaar_number, pan_number, mobile, email, address, pincode, city, state, income_source, and any other visible fields. Return ONLY valid JSON.`
-      const response = await callClaude(apiKey, prompt, b64, file.type as any)
+      const response = await callGemini(apiKey, prompt, b64, file.type as any)
       const clean = response.replace(/```json|```/g, '').trim()
       const data = JSON.parse(clean)
       setFormData(data)
@@ -40,7 +40,7 @@ export default function FormFiller({ apiKey }: { apiKey: string }) {
 
       {!apiKey && (
         <div className="alert alert-warning">
-          ⚠️ This feature requires a Claude API key. Please enter your key in the top bar.
+          ⚠️ This feature requires an API key. Please enter your key in the top bar.
         </div>
       )}
 
