@@ -194,3 +194,4 @@ export function compressToTargetKb(file: File, targetKb: number): Promise<{ data
     img.onerror = reject
     img.src = url
   })
+}
