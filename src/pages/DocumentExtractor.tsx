@@ -12,6 +12,16 @@ const DOC_TYPES = [
   { id: 'birth', label: 'Birth Certificate', emoji: '📋' },
 ]
 
+// Field-specific schemas per document type — much more reliable than a generic "extract everything" prompt
+const DOC_FIELDS: Record<string, string[]> = {
+  aadhaar: ['name', 'date_of_birth', 'gender', 'aadhaar_number', 'address', 'father_name'],
+  pan: ['name', 'father_name', 'date_of_birth', 'pan_number'],
+  voter: ['name', 'relative_name', 'voter_id_number', 'date_of_birth', 'gender', 'address'],
+  passport: ['name', 'date_of_birth', 'passport_number', 'nationality', 'place_of_birth', 'gender', 'issue_date', 'expiry_date'],
+  ssc: ['name', 'father_name', 'date_of_birth', 'hall_ticket_number', 'school_name', 'year_of_passing'],
+  birth: ['name', 'date_of_birth', 'gender', 'father_name', 'mother_name', 'place_of_birth', 'registration_number'],
+}
+
 export default function DocumentExtractor({ apiKey }: { apiKey: string }) {
   const [file, setFile] = useState<File | null>(null)
   const [docType, setDocType] = useState('aadhaar')
@@ -41,7 +51,17 @@ export default function DocumentExtractor({ apiKey }: { apiKey: string }) {
       if (apiKey) {
         setMsg('Extracting document information with AI...')
         const b64 = await fileToBase64(file)
-        const prompt = `This is a ${docLabel}. Extract all visible text information from this document and return it as JSON with relevant fields like name, date_of_birth, id_number, address, etc. Return ONLY valid JSON, no other text.`
+        const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
+        const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text.
+
+Extract ONLY these fields: ${fields.join(', ')}.
+
+Rules:
+- Return ONLY valid JSON, no other text, no markdown code fences.
+- If a field is unreadable, blurry, or not present, set its value to null — do not guess.
+- For names, use the exact spelling as printed (prefer the English text if shown; transliterate Telugu only if no English version exists).
+- For dates, use DD-MM-YYYY format.
+- For id numbers (Aadhaar/PAN/Voter/Passport), include them exactly as printed, no spaces unless the source has them.`
         try {
           const response = await callClaude(apiKey, prompt, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
@@ -134,4 +154,3 @@ export default function DocumentExtractor({ apiKey }: { apiKey: string }) {
       )}
     </div>
   )
-}
