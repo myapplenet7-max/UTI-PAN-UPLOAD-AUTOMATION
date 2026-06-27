@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
-import { callClaude, fileToBase64, processImage } from '../lib/utils'
+import { callGemini, fileToBase64, processImage } from '../lib/utils'
 
 const DOC_TYPES = [
   { id: 'aadhaar', label: 'Aadhaar Card', emoji: '🪪' },
@@ -63,7 +63,7 @@ Rules:
 - For dates, use DD-MM-YYYY format.
 - For id numbers (Aadhaar/PAN/Voter/Passport), include them exactly as printed, no spaces unless the source has them.`
         try {
-          const response = await callClaude(apiKey, prompt, b64, file.type as any)
+          const response = await callGemini(apiKey, prompt, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)
