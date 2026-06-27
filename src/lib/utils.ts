@@ -19,7 +19,7 @@ export async function callClaude(apiKey: string, prompt: string, imageBase64?: s
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content }]
     })
@@ -32,6 +32,42 @@ export async function callClaude(apiKey: string, prompt: string, imageBase64?: s
 
   const data = await res.json()
   return data.content.map((b: any) => b.text || '').join('')
+}
+
+// Gemini API — free tier on Flash models, no credit card required.
+// Same signature as callClaude() so it's a drop-in swap in the calling code.
+export async function callGemini(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
+  const parts: any[] = []
+
+  if (imageBase64 && imageMime) {
+    parts.push({
+      inline_data: { mime_type: imageMime, data: imageBase64 }
+    })
+  }
+
+  parts.push({ text: prompt })
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { responseMimeType: 'application/json' }
+      })
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || `API error ${res.status}`)
+  }
+
+  const data = await res.json()
+  const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || ''
+  if (!text) throw new Error('Gemini returned an empty response')
+  return text
 }
 
 export function fileToBase64(file: File): Promise<string> {
