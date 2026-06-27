@@ -67,8 +67,8 @@ Rules:
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)
-        } catch {
-          // AI extraction failed, continue without it
+        } catch (aiErr: any) {
+          setExtractedInfo({ AI_ERROR: aiErr.message || 'Unknown AI error' })
         }
       }
 
