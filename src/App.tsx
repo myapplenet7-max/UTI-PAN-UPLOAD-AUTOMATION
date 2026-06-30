@@ -1,24 +1,29 @@
 import { useState } from 'react'
 import {
   Home, Image, PenLine, Layers, FileText, ClipboardList,
-  FilePlus, FileStack, Wrench, HelpCircle, Menu, X, BookOpen, Phone, Settings
+  FilePlus, FileStack, Wrench, HelpCircle, Menu, X, BookOpen, Phone, Settings,
+  Users, FileSpreadsheet, ScanLine
 } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import PhotoExtract from './pages/PhotoExtract'
 import SignatureExtract from './pages/SignatureExtract'
 import PhotoWithSignature from './pages/PhotoWithSignature'
 import DocumentExtractor from './pages/DocumentExtractor'
+import CombinedScan from './pages/CombinedScan'
 import FormFiller from './pages/FormFiller'
 import CorrectionPacket from './pages/CorrectionPacket'
 import NewPanPacket from './pages/NewPanPacket'
 import PdfTools from './pages/PdfTools'
 import ImageTools from './pages/ImageTools'
 import FAQ from './pages/FAQ'
+import Applicants from './pages/Applicants'
+import Templates from './pages/Templates'
 
 type Page =
   | 'dashboard' | 'photo' | 'signature' | 'photo-sig'
-  | 'document' | 'form' | 'correction' | 'newpan'
+  | 'document' | 'combined-scan' | 'form' | 'correction' | 'newpan'
   | 'pdf' | 'image' | 'faq'
+  | 'applicants' | 'templates'
 
 const NAV = [
   {
@@ -28,12 +33,20 @@ const NAV = [
     ]
   },
   {
+    label: 'Records',
+    items: [
+      { id: 'applicants', label: 'Applicants', icon: Users },
+      { id: 'templates', label: 'Templates', icon: FileSpreadsheet },
+    ]
+  },
+  {
     label: 'Tools',
     items: [
       { id: 'photo', label: 'UTI Photo Extract', icon: Image },
       { id: 'signature', label: 'Signature Extract', icon: PenLine },
       { id: 'photo-sig', label: 'Photo + Signature', icon: Layers },
       { id: 'document', label: 'Document Extractor', icon: FileText },
+      { id: 'combined-scan', label: 'Combined Scan (Multi-Doc)', icon: ScanLine },
       { id: 'form', label: 'Auto Form Filler', icon: ClipboardList },
       { id: 'correction', label: 'Correction Packet', icon: FilePlus },
       { id: 'newpan', label: 'New PAN Packet', icon: FileStack },
@@ -72,13 +85,16 @@ export default function App() {
       case 'photo': return <PhotoExtract apiKey={apiKey} />
       case 'signature': return <SignatureExtract apiKey={apiKey} />
       case 'photo-sig': return <PhotoWithSignature apiKey={apiKey} />
-      case 'document': return <DocumentExtractor apiKey={apiKey} />
-      case 'form': return <FormFiller apiKey={apiKey} />
+      case 'document': return <DocumentExtractor apiKey={apiKey} navigate={navigate} />
+      case 'combined-scan': return <CombinedScan apiKey={apiKey} navigate={navigate} />
+      case 'form': return <FormFiller apiKey={apiKey} navigate={navigate} />
       case 'correction': return <CorrectionPacket apiKey={apiKey} />
       case 'newpan': return <NewPanPacket apiKey={apiKey} />
       case 'pdf': return <PdfTools />
       case 'image': return <ImageTools />
       case 'faq': return <FAQ />
+      case 'applicants': return <Applicants />
+      case 'templates': return <Templates />
       default: return <Dashboard navigate={navigate} />
     }
   }

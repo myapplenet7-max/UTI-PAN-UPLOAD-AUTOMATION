@@ -2,6 +2,7 @@ import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
 import { callGemini, fileToBase64, processImage } from '../lib/utils'
+import ApplicantMatchPicker from '../components/ApplicantMatchPicker'
 
 const DOC_TYPES = [
   { id: 'aadhaar', label: 'Aadhaar Card', emoji: '🪪' },
@@ -22,13 +23,14 @@ const DOC_FIELDS: Record<string, string[]> = {
   birth: ['name', 'date_of_birth', 'gender', 'father_name', 'mother_name', 'place_of_birth', 'registration_number'],
 }
 
-export default function DocumentExtractor({ apiKey }: { apiKey: string }) {
+export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [docType, setDocType] = useState('aadhaar')
   const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
   const [results, setResults] = useState<any[]>([])
   const [extractedInfo, setExtractedInfo] = useState<Record<string, string>>({})
+  const [savedApplicant, setSavedApplicant] = useState<any>(null)
 
   const process = async () => {
     if (!file) return
@@ -67,6 +69,7 @@ Rules:
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)
+          setSavedApplicant(null)
         } catch (aiErr: any) {
           setExtractedInfo({ AI_ERROR: aiErr.message || 'Unknown AI error' })
         }
@@ -137,20 +140,31 @@ Rules:
         </div>
       )}
 
-      {Object.keys(extractedInfo).length > 0 && (
-        <div className="card">
-          <div className="card-title">🤖 AI Extracted Information</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {Object.entries(extractedInfo).map(([k, v]) => (
-              <div key={k} style={{ background: 'var(--bg3)', padding: '10px 14px', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'capitalize', marginBottom: 4 }}>
-                  {k.replace(/_/g, ' ')}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{String(v)}</div>
-              </div>
-            ))}
-          </div>
+      {Object.keys(extractedInfo).length > 0 && !extractedInfo.AI_ERROR && !savedApplicant && (
+        <ApplicantMatchPicker
+          extractedData={extractedInfo}
+          documentType={docType}
+          fileName={file?.name}
+          onSaved={(applicant, document) => setSavedApplicant(applicant)}
+          onCancel={() => setExtractedInfo({})}
+        />
+      )}
+
+      {savedApplicant && (
+        <div className="card" style={{ borderColor: 'var(--green)' }}>
+          <div className="card-title">✓ Saved to Applicant Record</div>
+          <p style={{ fontSize: 13 }}>
+            Data saved for <strong>{savedApplicant.full_name}</strong>.
+            {' '}View full record in the{' '}
+            <a href="#" onClick={(e) => { e.preventDefault(); navigate?.('applicants') }}>
+              Applicants
+            </a>{' '}page.
+          </p>
         </div>
+      )}
+
+      {extractedInfo.AI_ERROR && (
+        <div className="alert alert-error">⚠️ {extractedInfo.AI_ERROR}</div>
       )}
     </div>
   )

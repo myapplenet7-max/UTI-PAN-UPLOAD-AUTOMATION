@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import { callGemini, fileToBase64 } from '../lib/utils'
+import ApplicantMatchPicker from '../components/ApplicantMatchPicker'
 
-export default function FormFiller({ apiKey }: { apiKey: string }) {
+export default function FormFiller({ apiKey, navigate }: { apiKey: string; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
   const [formData, setFormData] = useState<Record<string, string>>({})
+  const [savedApplicant, setSavedApplicant] = useState<any>(null)
 
   const extract = async () => {
     if (!file || !apiKey) return
@@ -18,6 +20,7 @@ export default function FormFiller({ apiKey }: { apiKey: string }) {
       const clean = response.replace(/```json|```/g, '').trim()
       const data = JSON.parse(clean)
       setFormData(data)
+      setSavedApplicant(null)
       setStatus('done')
       setMsg('✓ Form data extracted successfully')
     } catch (e: any) {
@@ -63,19 +66,26 @@ export default function FormFiller({ apiKey }: { apiKey: string }) {
         </div>
       )}
 
-      {Object.keys(formData).length > 0 && (
-        <div className="card">
-          <div className="card-title">📋 Extracted Form Data</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {Object.entries(formData).map(([k, v]) => v ? (
-              <div key={k} style={{ background: 'var(--bg3)', padding: '10px 14px', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'capitalize', marginBottom: 4 }}>
-                  {k.replace(/_/g, ' ')}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{String(v)}</div>
-              </div>
-            ) : null)}
-          </div>
+      {Object.keys(formData).length > 0 && !(formData as any).AI_ERROR && !savedApplicant && (
+        <ApplicantMatchPicker
+          extractedData={formData}
+          documentType="uti_pan_form"
+          fileName={file?.name}
+          onSaved={(applicant) => setSavedApplicant(applicant)}
+          onCancel={() => setFormData({})}
+        />
+      )}
+
+      {savedApplicant && (
+        <div className="card" style={{ borderColor: 'var(--green)' }}>
+          <div className="card-title">✓ Saved to Applicant Record</div>
+          <p style={{ fontSize: 13 }}>
+            Data saved for <strong>{savedApplicant.full_name}</strong>.
+            {' '}View full record in the{' '}
+            <a href="#" onClick={(e) => { e.preventDefault(); navigate?.('applicants') }}>
+              Applicants
+            </a>{' '}page.
+          </p>
         </div>
       )}
     </div>
