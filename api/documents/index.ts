@@ -30,8 +30,8 @@
 // }
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { sql } from '../../lib/db'
-import { FIELD_ALIASES } from '../../lib/types'
+import { sql } from '../../lib/db.js'
+import { FIELD_ALIASES } from '../../lib/types.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

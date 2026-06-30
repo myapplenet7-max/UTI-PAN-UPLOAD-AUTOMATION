@@ -14,7 +14,7 @@
 // government-issued identifiers — a match there is authoritative.
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { sql } from '../../lib/db'
+import { sql } from '../../lib/db.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
