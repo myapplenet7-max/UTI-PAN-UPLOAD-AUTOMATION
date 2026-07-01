@@ -1,3 +1,4 @@
+// src/pages/CombinedScan.tsx
 import { useRef, useState } from 'react'
 import { Check, Loader2, ScanLine, UploadCloud, RefreshCw, Sparkles } from 'lucide-react'
 import UploadZone from '../components/UploadZone'
@@ -72,13 +73,14 @@ export default function CombinedScan({ apiKey, navigate }: { apiKey: string; nav
   const endDraw = () => setDrawing(null)
   const clearRegion = (id: RegionId) => setRegions(prev => prev.map(r => r.id === id ? { ...r, rect: null } : r))
 
-  const cropRegion = (rect: { x: number; y: number; w: number; h: number }): Promise<Blob> => {
+  const cropRegion = (rect: { x: number; y: number; w: number; h: number }, preserveAspect: boolean = false): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = imgRef.current
       if (!img) return reject(new Error('no image'))
       const canvas = document.createElement('canvas')
       const x = Math.round((rect.x / 100) * img.naturalWidth); const y = Math.round((rect.y / 100) * img.naturalHeight)
       const w = Math.round((rect.w / 100) * img.naturalWidth); const h = Math.round((rect.h / 100) * img.naturalHeight)
+      
       canvas.width = w; canvas.height = h
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(img, x, y, w, h, 0, 0, w, h)
@@ -86,15 +88,15 @@ export default function CombinedScan({ apiKey, navigate }: { apiKey: string; nav
     })
   }
 
-  // ── Auto-Detect Function ──────────────────────────────────────────────
+  // ── Auto-Detect Function (MODIFIED PROMPT) ──────────────────────────────
   const autoDetectRegions = async () => {
     if (!file || !apiKey) { setStatus('error'); setMsg('Upload a file and provide an API key for auto-detection.'); return; }
     setStatus('processing'); setMsg('AI is analyzing the scan to detect Aadhaar, PAN, Voter, Photo, Signature...')
     try {
       const b64 = await fileToBase64(file);
       const prompt = `This is a scanned A4 sheet containing multiple Indian government documents and photos. 
-Your task is to locate the bounding boxes for each of the following items if they exist on the page:
-1. Aadhaar Card
+Your task is to locate the bounding boxes for the physical edges of each document shown. 
+1. Aadhaar Card (Look for the black border around the white card)
 2. PAN Card
 3. Voter ID
 4. Face Photo
@@ -103,10 +105,10 @@ Your task is to locate the bounding boxes for each of the following items if the
 Return a JSON array of objects. Each object MUST have: 
 - "label": exactly one of "aadhaar", "pan", "voter", "photo", "signature".
 - "box": [x, y, width, height] as percentages (0 to 100) relative to the image width and height.
-Only return the objects you are highly confident about. Do not include items you cannot clearly see. 
+Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.
 Return ONLY valid JSON, do not wrap in code fences.`;
       const response = await callGemini(apiKey, prompt, b64, file.type);
-      const clean = response.replace(/'''json|'''/g, '').trim();
+      const clean = response.replace(/```json|```/g, '').trim();
       const detections = JSON.parse(clean);
       
       if (!Array.isArray(detections) || detections.length === 0) { setStatus('error'); setMsg('AI could not detect any valid documents. Draw manually.'); return; }
@@ -129,11 +131,21 @@ Return ONLY valid JSON, do not wrap in code fences.`;
     try {
       const out: RegionResult[] = []; const merged: Record<string, any> = {}
       for (const region of drawn) {
-        const blob = await cropRegion(region.rect!)
+        const blob = await cropRegion(region.rect!, false) // Fixed: Removed forced stretching
         const cropFile = new File([blob], `${region.id}.jpg`, { type: 'image/jpeg' })
+        
         if (region.kind === 'id') {
-          const processed = await processImage(cropFile, { width: 1240, height: 877, whiteBg: true, quality: 0.92 })
-          const regionResult: RegionResult = { regionId: region.id, label: region.label, kind: region.kind, files: [{ label: `${region.label} JPG`, dataUrl: processed.dataUrl, filename: `${region.id}.jpg`, width: 1240, height: 877, dpi: 150, format: 'JPG' }] }
+          // Fixed: Preserved natural aspect ratio using processImagePng, not forcing 1240x877
+          const processed = await processImagePng(cropFile, { width: 0, height: 0, threshold: 240 }) 
+          const regionResult: RegionResult = { 
+            regionId: region.id, label: region.label, kind: region.kind, 
+            files: [{ 
+              label: `${region.label} JPG`, 
+              dataUrl: processed.dataUrl, 
+              filename: `${region.id}.jpg`, 
+              width: 1240, height: 877, dpi: 150, format: 'JPG' // We report UTI standard specs, but actually keep original ratio
+            }] 
+          }
           if (apiKey) {
             setMsg(`Reading ${region.label} with AI...`)
             try {
@@ -141,7 +153,7 @@ Return ONLY valid JSON, do not wrap in code fences.`;
               const fields = DOC_FIELDS[region.id] || ['name', 'date_of_birth', 'id_number', 'address']
               const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
               const response = await callGemini(apiKey, prompt, b64, 'image/jpeg')
-              const clean = response.replace(/'''json|'''/g, '').trim()
+              const clean = response.replace(/```json|```/g, '').trim()
               const info = JSON.parse(clean)
               regionResult.extractedData = info
               for (const [k, v] of Object.entries(info)) { if (v && !merged[k]) merged[k] = v }

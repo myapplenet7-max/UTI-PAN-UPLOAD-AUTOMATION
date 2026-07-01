@@ -1,29 +1,4 @@
 // src/components/ApplicantMatchPicker.tsx
-//
-// Shown immediately after AI extraction succeeds, before the document is
-// saved. Searches for likely existing applicants (by Aadhaar/PAN/name) and
-// lets the operator either:
-//   - Merge into one of the suggested matches
-//   - Search manually for a different applicant
-//   - Create a brand new applicant record
-//
-// Usage (inside DocumentExtractor.tsx / FormFiller.tsx, after extraction):
-//
-//   const [pendingExtraction, setPendingExtraction] = useState(null)
-//   ...
-//   // after AI returns `info`:
-//   setPendingExtraction(info)
-//   ...
-//   {pendingExtraction && (
-//     <ApplicantMatchPicker
-//       extractedData={pendingExtraction}
-//       documentType={docType}
-//       fileName={file?.name}
-//       onSaved={(applicant) => { setPendingExtraction(null); ... }}
-//       onCancel={() => setPendingExtraction(null)}
-//     />
-//   )}
-
 import { useState, useEffect } from 'react'
 import { Search, UserPlus, Users, Check, Loader2 } from 'lucide-react'
 import {
@@ -56,7 +31,6 @@ export default function ApplicantMatchPicker({
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Auto-search for likely matches as soon as the component mounts
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -134,11 +108,11 @@ export default function ApplicantMatchPicker({
                       padding: '10px 14px', borderRadius: 8, textAlign: 'left',
                       border: `1px solid ${selectedId === m.id ? 'var(--accent)' : 'var(--border)'}`,
                       background: selectedId === m.id ? 'var(--accent-bg)' : 'var(--bg3)',
-                      cursor: 'pointer',
+                      cursor: 'pointer', color: 'var(--text)' // Added text color
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{m.full_name || '(no name)'}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{m.full_name || '(no name)'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {m.aadhaar_number && `Aadhaar: ${m.aadhaar_number}`}
                         {m.pan_number && `  PAN: ${m.pan_number}`}
@@ -202,11 +176,11 @@ export default function ApplicantMatchPicker({
                   style={{
                     display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
                     borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg3)',
-                    cursor: 'pointer', textAlign: 'left',
+                    cursor: 'pointer', textAlign: 'left', color: 'var(--text)' // Added text color
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{m.full_name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{m.full_name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                       {m.document_count} document{m.document_count !== 1 ? 's' : ''} on file
                     </div>
