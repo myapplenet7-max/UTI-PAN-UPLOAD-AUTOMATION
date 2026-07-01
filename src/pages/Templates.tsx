@@ -114,8 +114,7 @@ ${textContent.slice(0, 15000)}`
       const templateText = await callGemini(apiKey, templatePrompt)
       setContent(templateText.trim())
       if (!name.trim()) {
-        const firstLine = templateText.split('
-').find(l => l.trim().length > 3 && l.trim().length < 80)
+        const firstLine = templateText.split('\n').find(l => l.trim().length > 3 && l.trim().length < 80)
         if (firstLine) setName(firstLine.replace(/{{[^}]+}}/g, '').trim().slice(0, 60))
       }
       setAiStatus('done'); setAiMsg('✓ Template generated successfully!')
@@ -179,8 +178,8 @@ function TemplateFiller({ template, onClose }: { template: Template; onClose: ()
     setSearching(true)
     try {
       let r: ApplicantSearchResult[]
-      if (/^d{12}$/.test(q.replace(/s/g, ''))) r = await searchApplicantByAadhaar(q)
-      else if (/^[A-Za-z]{5}d{4}[A-Za-z]$/.test(q)) r = await searchApplicantByPan(q)
+      if (/^\d{12}$/.test(q.replace(/\s/g, ''))) r = await searchApplicantByAadhaar(q)
+      else if (/^[A-Za-z]{5}\d{4}[A-Za-z]$/.test(q)) r = await searchApplicantByPan(q)
       else r = await searchApplicantsByName(q)
       setResults(r)
     } finally { setSearching(false) }
@@ -235,7 +234,7 @@ function TemplateFiller({ template, onClose }: { template: Template; onClose: ()
         )}
         {applicant && (<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid var(--accent)', marginBottom: 16 }}><span style={{ fontSize: 13 }}><Check size={14} style={{ verticalAlign: -2, marginRight: 6 }} color="var(--accent)" /> Auto-filled from <strong>{applicant.full_name}</strong> ({placeholders.length - unmatched.length}/{placeholders.length} fields matched)</span><button className="btn btn-ghost" onClick={() => setShowSearch(true)}>Change</button></div>)}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          {placeholders.map(p => (<div key={p}><label style={{ fontSize: 11, display: 'block', marginBottom: 4, color: unmatched.includes(p) ? 'var(--amber, #d97706)' : 'var(--text3)' }}>{p.replace(/_/g, ' ')}{unmatched.includes(p) && applicant && ' (not on file — enter manually)'}</label><input type="text" value={values[p] || ''} onChange={e => setValues(v => ({ ...v, [p]: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${unmatched.includes(p) && applicant ? 'var(--amber, #d97706)' : 'var(--border)'}`, background: 'var(--bg3)', color: 'var(--text)' }} /></div>))}
+          {placeholders.map(p => (<div key={p}><label style={{ fontSize: 11, display: 'block', marginBottom: 4, color: unmatched.includes(p) ? 'var(--amber, #d97706)' : 'var(--text3)' }}>{p.replace(/_/g, ' ')}{unmatched.includes(p) && applicant && ' (not on file — enter manually)'}</label><input type="text" value={values[p] || ''} onChange={e => setValues(v => ({ ...v, [p]: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `${unmatched.includes(p) && applicant ? 'var(--amber, #d97706)' : 'var(--border)'}`, background: 'var(--bg3)', color: 'var(--text)' }} /></div>))}
         </div>
         {!allFilled && (<p style={{ fontSize: 12, color: 'var(--amber, #d97706)', marginBottom: 12 }}>Some fields are still empty — they will appear as raw placeholder tokens in the output until filled.</p>)}
       </div>
