@@ -39,7 +39,7 @@ async function handlePatch(id: string, req: VercelRequest, res: VercelResponse) 
 
     const setClauses = Object.keys(updates).map((key, i) => `${key} = $${i + 2}`)
     const values = Object.values(updates)
-    const rows = await sql.query(
+    const rows = await sql(
       `UPDATE templates SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
       [id, ...values]
     )

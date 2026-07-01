@@ -76,7 +76,7 @@ async function handlePatch(id: string, req: VercelRequest, res: VercelResponse) 
     }
 
     // neon's sql tagged template doesn't support dynamic column lists
-    // directly, so build the query with sql.query() using a parameterized
+    // directly, so build the query with sql() using a parameterized
     // statement instead.
     const setClauses = Object.keys(updates).map((key, i) => `${key} = $${i + 2}`)
     const values = Object.values(updates)
@@ -87,7 +87,7 @@ async function handlePatch(id: string, req: VercelRequest, res: VercelResponse) 
       WHERE id = $1
       RETURNING *
     `
-    const rows = await sql.query(queryText, [id, ...values])
+    const rows = await sql(queryText, [id, ...values])
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Applicant not found' })

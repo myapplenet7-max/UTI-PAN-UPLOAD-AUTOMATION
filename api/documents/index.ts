@@ -77,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (Object.keys(updates).length > 0) {
         const setClauses = Object.keys(updates).map((key, i) => `${key} = $${i + 2}`)
         const values = Object.values(updates)
-        const rows = await sql.query(
+        const rows = await sql(
           `UPDATE applicants SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
           [b.applicant_id, ...values]
         )
