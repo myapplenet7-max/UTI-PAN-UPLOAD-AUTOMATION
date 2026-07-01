@@ -1,3 +1,4 @@
+// src/pages/DocumentExtractor.tsx
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
@@ -13,7 +14,6 @@ const DOC_TYPES = [
   { id: 'birth', label: 'Birth Certificate', emoji: '📋' },
 ]
 
-// Field-specific schemas per document type — much more reliable than a generic "extract everything" prompt
 const DOC_FIELDS: Record<string, string[]> = {
   aadhaar: ['name', 'date_of_birth', 'gender', 'aadhaar_number', 'address', 'father_name'],
   pan: ['name', 'father_name', 'date_of_birth', 'pan_number'],
@@ -39,31 +39,30 @@ export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string
     try {
       const out: any[] = []
 
-      // Process image at document size
-      const processed = await processImage(file, { width: 1240, height: 877, whiteBg: true, quality: 0.92 })
+      // Added support for PDFs directly
       const docLabel = DOC_TYPES.find(d => d.id === docType)?.label || docType
-      out.push({
-        label: `${docLabel} JPG`,
-        dataUrl: processed.dataUrl,
-        filename: `${docType}.jpg`,
-        width: 1240, height: 877, dpi: 150, format: 'JPG'
-      })
+      if (file.type === 'application/pdf') {
+        out.push({
+          label: `${docLabel} PDF`,
+          dataUrl: URL.createObjectURL(file),
+          filename: `${docType}.pdf`,
+          width: 0, height: 0, dpi: 0, format: 'PDF'
+        })
+      } else {
+        const processed = await processImage(file, { width: 1240, height: 877, whiteBg: true, quality: 0.92 })
+        out.push({
+          label: `${docLabel} JPG`,
+          dataUrl: processed.dataUrl,
+          filename: `${docType}.jpg`,
+          width: 1240, height: 877, dpi: 150, format: 'JPG'
+        })
+      }
 
-      // AI extraction if API key provided
       if (apiKey) {
         setMsg('Extracting document information with AI...')
         const b64 = await fileToBase64(file)
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
-        const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text.
-
-Extract ONLY these fields: ${fields.join(', ')}.
-
-Rules:
-- Return ONLY valid JSON, no other text, no markdown code fences.
-- If a field is unreadable, blurry, or not present, set its value to null — do not guess.
-- For names, use the exact spelling as printed (prefer the English text if shown; transliterate Telugu only if no English version exists).
-- For dates, use DD-MM-YYYY format.
-- For id numbers (Aadhaar/PAN/Voter/Passport), include them exactly as printed, no spaces unless the source has them.`
+        const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
         try {
           const response = await callGemini(apiKey, prompt, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
@@ -112,7 +111,7 @@ Rules:
           ))}
         </div>
 
-        <UploadZone file={file} onFile={setFile} label={`Upload ${DOC_TYPES.find(d => d.id === docType)?.label}`} />
+        <UploadZone file={file} onFile={setFile} label={`Upload ${DOC_TYPES.find(d => d.id === docType)?.label}`} accept="image/*,application/pdf" />
 
         {file && (
           <div style={{ marginTop: 16 }}>
