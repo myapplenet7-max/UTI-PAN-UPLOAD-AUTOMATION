@@ -94,7 +94,7 @@ export default function App() {
       case 'image': return <ImageTools />
       case 'faq': return <FAQ />
       case 'applicants': return <Applicants />
-      case 'templates': return <Templates />
+      case 'templates': return <Templates apiKey={apiKey} />
       default: return <Dashboard navigate={navigate} />
     }
   }

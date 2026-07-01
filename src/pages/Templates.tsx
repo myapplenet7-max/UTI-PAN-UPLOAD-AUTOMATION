@@ -11,10 +11,11 @@
 //   ...
 //   case 'templates': return <Templates />
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   FileSpreadsheet, Plus, Search, User, Loader2, Eye,
   Save, Download, ChevronLeft, Check, Edit2, Trash2, FileText,
+  Sparkles, Upload, X,
 } from 'lucide-react'
 import {
   getTemplates, saveTemplate, updateTemplate, deleteTemplate,
@@ -25,12 +26,12 @@ import {
   getApplicant, type ApplicantSearchResult,
 } from '../lib/applicantsApi'
 import { autoFillFromApplicant } from '../lib/applicantToTemplate'
-import { downloadBlob } from '../lib/utils'
+import { downloadBlob, callGemini, fileToBase64 } from '../lib/utils'
 import { generateDocxBlob, buildDocxFilename } from '../lib/templateToDocx'
 
 type View = 'list' | 'editor' | 'fill'
 
-export default function Templates() {
+export default function Templates({ apiKey }: { apiKey?: string }) {
   const [view, setView] = useState<View>('list')
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,6 +52,7 @@ export default function Templates() {
     return (
       <TemplateEditor
         template={activeTemplate}
+        apiKey={apiKey}
         onSaved={() => { setView('list'); setActiveTemplate(null); load() }}
         onCancel={() => { setView('list'); setActiveTemplate(null) }}
       />
@@ -136,11 +138,17 @@ export default function Templates() {
 // ── Template Editor ──────────────────────────────────────────────────────
 
 function TemplateEditor({
-  template, onSaved, onCancel,
-}: { template: Template | null; onSaved: () => void; onCancel: () => void }) {
+  template, apiKey, onSaved, onCancel,
+}: { template: Template | null; apiKey?: string; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(template?.name || '')
   const [content, setContent] = useState(template?.content || '')
   const [saving, setSaving] = useState(false)
+
+  // AI generation state
+  const [aiFile, setAiFile] = useState<File | null>(null)
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [aiMsg, setAiMsg] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const placeholders = extractPlaceholders(content)
 
@@ -160,11 +168,156 @@ function TemplateEditor({
     }
   }
 
+  async function handleAiGenerate() {
+    if (!aiFile || !apiKey) return
+    setAiStatus('loading')
+    setAiMsg('Reading document...')
+
+    try {
+      let textContent = ''
+      const mime = aiFile.type
+
+      if (mime === 'text/plain') {
+        // Plain text — read directly
+        textContent = await aiFile.text()
+      } else if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        // DOCX — use mammoth to extract text in browser
+        setAiMsg('Extracting text from Word document...')
+        const mammoth = await import('mammoth')
+        const arrayBuffer = await aiFile.arrayBuffer()
+        const result = await mammoth.extractRawText({ arrayBuffer })
+        textContent = result.value
+      } else {
+        // Image or PDF — send to Gemini vision directly
+        setAiMsg('Sending to Gemini AI...')
+        const b64 = await fileToBase64(aiFile)
+
+        const readPrompt = `Read every word of this document carefully. It may contain Telugu and/or English text.
+Extract the COMPLETE full text of the document, preserving structure, paragraphs, and headings.
+Return ONLY the plain text content, no commentary.`
+
+        textContent = await callGemini(apiKey, readPrompt, b64, mime as any)
+      }
+
+      // Now ask Gemini to convert to template with placeholders
+      setAiMsg('Generating template with placeholders...')
+
+      const templatePrompt = `You are a document template generator. Below is the text of an official document (certificate, affidavit, or registration document). It may be in Telugu, English, or both.
+
+Your task:
+1. Convert this document into a reusable template
+2. Replace ALL person-specific values with {{PLACEHOLDER}} tokens in UPPERCASE_WITH_UNDERSCORES
+3. Keep all static text, headings, clauses, and structure exactly as-is
+4. For Telugu text, keep Telugu script but replace the person-specific values with the same {{PLACEHOLDER}} tokens
+5. Common placeholders to use:
+   - {{NAME}} for applicant name
+   - {{FATHER_NAME}} or {{HUSBAND_NAME}} for parent/spouse name
+   - {{DATE_OF_BIRTH}} for DOB
+   - {{ADDRESS}} for full address
+   - {{AADHAAR_NUMBER}} for Aadhaar
+   - {{PAN_NUMBER}} for PAN
+   - {{VOTER_ID_NUMBER}} for Voter ID
+   - {{MOBILE}} for mobile number
+   - {{SURVEY_NUMBER}} for land survey numbers
+   - {{EXTENT}} for land area/extent
+   - {{VILLAGE}}, {{MANDAL}}, {{DISTRICT}} for location fields
+   - {{REGISTRATION_NUMBER}} for registration/document numbers
+   - {{DATE}} for dates (use specific names like {{SALE_DATE}}, {{ISSUE_DATE}} if multiple dates)
+   - Create new placeholder names as needed for other specific values
+
+Return ONLY the template text with {{PLACEHOLDER}} tokens — no explanation, no JSON, no markdown.
+
+DOCUMENT TEXT:
+${textContent.slice(0, 15000)}`
+
+      const templateText = await callGemini(apiKey, templatePrompt)
+      setContent(templateText.trim())
+
+      // Auto-suggest a name from first heading if name is empty
+      if (!name.trim()) {
+        const firstLine = templateText.split('\n').find(l => l.trim().length > 3 && l.trim().length < 80)
+        if (firstLine) setName(firstLine.replace(/{{[^}]+}}/g, '').trim().slice(0, 60))
+      }
+
+      setAiStatus('done')
+      setAiMsg('✓ Template generated successfully! Review and edit below, then save.')
+    } catch (err: any) {
+      setAiStatus('error')
+      setAiMsg('Error: ' + (err.message || 'Unknown error'))
+    }
+  }
+
   return (
     <div className="page">
       <button className="btn btn-ghost" onClick={onCancel} style={{ marginBottom: 16 }}>
         <ChevronLeft size={14} /> Back to Templates
       </button>
+
+      {/* AI Generator Panel */}
+      {apiKey && (
+        <div className="card" style={{ marginBottom: 16, border: '1px solid var(--accent)', background: 'var(--accent-bg)' }}>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Sparkles size={16} color="var(--accent)" /> AI Template Generator
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+            Upload any document (PDF, image, Word .docx, or .txt) — AI will read it and auto-generate a reusable template with <code style={{ background: 'var(--bg3)', padding: '1px 4px', borderRadius: 4 }}>{'{{PLACEHOLDERS}}'}</code>. Supports Telugu + English documents, registration docs, affidavits, certificates.
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.txt"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0]
+                if (f) { setAiFile(f); setAiStatus('idle'); setAiMsg('') }
+              }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={14} /> {aiFile ? 'Change File' : 'Upload Document'}
+            </button>
+
+            {aiFile && (
+              <>
+                <span style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  📄 {aiFile.name}
+                  <button
+                    onClick={() => { setAiFile(null); setAiStatus('idle'); setAiMsg('') }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text3)' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAiGenerate}
+                  disabled={aiStatus === 'loading'}
+                >
+                  {aiStatus === 'loading'
+                    ? <><Loader2 size={14} className="spin" /> Generating...</>
+                    : <><Sparkles size={14} /> Generate Template</>
+                  }
+                </button>
+              </>
+            )}
+          </div>
+
+          {aiMsg && (
+            <div style={{
+              marginTop: 10, fontSize: 12, padding: '8px 12px', borderRadius: 6,
+              background: aiStatus === 'error' ? '#fee2e2' : aiStatus === 'done' ? '#dcfce7' : 'var(--bg3)',
+              color: aiStatus === 'error' ? '#dc2626' : aiStatus === 'done' ? '#16a34a' : 'var(--text)',
+            }}>
+              {aiStatus === 'loading' && <Loader2 size={12} className="spin" style={{ display: 'inline', marginRight: 6 }} />}
+              {aiMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <div className="card-title">{template ? 'Edit Template' : 'New Template'}</div>
@@ -186,8 +339,8 @@ function TemplateEditor({
         <textarea
           value={content}
           onChange={e => setContent(e.target.value)}
-          rows={14}
-          placeholder={'This is to certify that {{NAME}}, S/O {{FATHER_NAME}}, residing at {{ADDRESS}}, ...'}
+          rows={18}
+          placeholder={'This is to certify that {{NAME}}, S/O {{FATHER_NAME}}, residing at {{ADDRESS}}, ...\n\nOr use the AI Generator above to auto-generate from an uploaded document.'}
           style={{
             width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)',
             background: 'var(--bg3)', color: 'var(--text)', fontFamily: 'monospace', fontSize: 13,
