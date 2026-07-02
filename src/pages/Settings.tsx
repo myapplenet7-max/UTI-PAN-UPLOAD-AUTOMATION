@@ -1,8 +1,8 @@
 // src/pages/Settings.tsx
 import { useState } from 'react'
-import { Save, Check, Loader2 } from 'lucide-react'
+import { Check, Server, Zap, Cpu, Globe, Layers, Lock } from 'lucide-react'
 
-export default function Settings() {
+export default function SettingsPage() {
   const [keys, setKeys] = useState(() => ({
     gemini: localStorage.getItem('ai_key_gemini') || '',
     openrouter: localStorage.getItem('ai_key_openrouter') || '',
@@ -24,22 +24,42 @@ export default function Settings() {
     localStorage.setItem('ai_auto_failover', String(newVal))
   }
 
-  const totalKeys = Object.values(keys).filter(k => k).length
+  const serviceIconMap: Record<string, any> = {
+    gemini: <Cpu size={22} />,
+    openrouter: <Globe size={22} />,
+    groq: <Zap size={22} />,
+    huggingface: <Layers size={22} />,
+  }
+
+  const serviceColorMap: Record<string, string> = {
+    gemini: 'rgba(79,127,255,0.15)',
+    openrouter: 'rgba(124,92,255,0.15)',
+    groq: 'rgba(255,159,67,0.15)',
+    huggingface: 'rgba(255,107,107,0.15)',
+  }
 
   return (
-    <div className="page" style={{ maxWidth: '800px', margin: '0 auto' }}>
-      <div className="page-header">
-        <h2 style={{ fontSize: '28px' }}>⚙️ AI Providers</h2>
-        <p style={{ color: 'var(--text2)' }}>Manage your AI services and API keys. {totalKeys > 0 ? `${totalKeys} active connections.` : 'Connect your first AI provider to get started.'}</p>
+    <div className="page" style={{ maxWidth: '960px', margin: '0 auto' }}>
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '28px', fontWeight: 700 }}>Settings</h2>
+        <p style={{ color: 'var(--text2)' }}>Configure your AI providers and default behavior.</p>
       </div>
 
-      <div className="card" style={{ padding: '28px', border: '1px solid rgba(79,127,255,0.2)', background: 'rgba(17,25,40,0.8)' }}>
-        <div className="card-title" style={{ fontSize: '16px', marginBottom: '20px' }}>Service Configuration</div>
+      {/* AUTO-FAILOVER GLASS CARD */}
+      <div style={{
+        background: 'rgba(13, 18, 34, 0.6)', backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: '16px', padding: '24px', marginBottom: '32px',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.2)'
+      }}>
+        <div className="card-title" style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Server size={18} /> Configuration
+        </div>
         
-        <div style={{ marginBottom: '24px' }}>
-          <label style={{ fontSize: '13px', color: 'var(--text2)', display: 'block', marginBottom: '8px' }}>Default AI Service</label>
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ fontSize: '13px', color: 'var(--text2)', display: 'block', marginBottom: '6px' }}>Default AI Service</label>
           <select value={selectedAi} onChange={e => { setSelectedAi(e.target.value); localStorage.setItem('selected_ai_service', e.target.value) }} 
-            style={{ width: '100%', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: '14px' }}>
+            style={{ width: '100%', maxWidth: '300px', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.04)', color: 'var(--text)', fontSize: '14px', outline: 'none', cursor: 'pointer' }}>
             <option value="gemini">Gemini (Google)</option>
             <option value="openrouter">OpenRouter (Universal)</option>
             <option value="groq">Groq (Fastest)</option>
@@ -47,25 +67,52 @@ export default function Settings() {
           </select>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.05)' }}>
-          <input type="checkbox" id="failover" checked={autoFailover} onChange={toggleFailover} style={{ width: '18px', height: '18px', accentColor: 'var(--accent)' }} />
-          <label htmlFor="failover" style={{ fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>🤖 Auto-Failover
-            <span style={{ fontSize: '12px', color: 'var(--text2)', fontWeight: 400, display: 'block' }}>If the selected AI hits a limit, automatically route to the next available AI provider.</span>
-          </label>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px', borderRadius: '12px', border: '1px solid rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
+          <input type="checkbox" id="failover" checked={autoFailover} onChange={toggleFailover} style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#4F7FFF', cursor: 'pointer' }} />
+          <div>
+            <label htmlFor="failover" style={{ fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>Auto-Failover</label>
+            <p style={{ fontSize: '12px', color: 'var(--text2)', margin: 0, lineHeight: '1.5' }}>If the selected AI hits a rate limit, automatically route to the next available AI provider.</p>
+          </div>
         </div>
+      </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          {Object.entries(keys).map(([service, key]) => (
-            <div key={service} style={{ background: 'var(--bg3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text2)', textTransform: 'capitalize', display: 'block', marginBottom: '6px' }}>{service}</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input type="password" placeholder={`Enter ${service} key...`} value={key} onChange={e => saveKey(service, e.target.value)} 
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px' }} />
-                {key && <Check size={18} color="var(--green)" />}
+      {/* AI PROVIDER GLASS CARDS GRID */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        {Object.entries(keys).map(([service, key]) => (
+          <div key={service} style={{
+            background: 'rgba(13, 18, 34, 0.6)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: '16px', padding: '20px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+            display: 'flex', flexDirection: 'column', gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: serviceColorMap[service], display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text)' }}>
+                  {serviceIconMap[service]}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '15px', textTransform: 'capitalize' }}>{service}</div>
+                  <div style={{ fontSize: '11px', color: key ? 'var(--green)' : 'var(--text3)' }}>
+                    {key ? 'Active' : 'Not connected'}
+                  </div>
+                </div>
               </div>
+              {key && <Check size={18} color="var(--green)" />}
             </div>
-          ))}
-        </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '4px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <Lock size={14} color="var(--text3)" />
+              <input 
+                type="password" 
+                placeholder={`Enter ${service} API key...`} 
+                value={key} 
+                onChange={e => saveKey(service, e.target.value)} 
+                style={{ flex: 1, background: 'transparent', border: 'none', color: 'var(--text)', fontSize: '13px', padding: '6px 0', outline: 'none', fontFamily: 'monospace' }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
