@@ -1,23 +1,13 @@
 // src/lib/applicantToTemplate.ts
 import type { Applicant } from './applicantTypes'
 
-const PLACEHOLDER_TO_COLUMN: Record<string, keyof Applicant> = {
-  NAME: 'full_name',
-  FULLNAME: 'full_name',
-  APPLICANTNAME: 'full_name', // <--- THIS FIXES THE NAME ERROR
-  APPLICANT_NAME: 'full_name', // <--- THIS FIXES THE NAME ERROR
-  
-  // ... rest of your existing code
-}
-// src/lib/applicantToTemplate.ts
-import type { Applicant } from './applicantTypes'
-
 // Expanded alias list to match standard certificate and Gift Deed fields
 const PLACEHOLDER_TO_COLUMN: Record<string, keyof Applicant> = {
   // Base Names
   NAME: 'full_name',
   FULLNAME: 'full_name',
   APPLICANTNAME: 'full_name',
+  APPLICANT_NAME: 'full_name',
   RECIPIENTNAME: 'full_name',        // Gift Deed
   EXECUTANTNAME: 'full_name',        // Gift Deed
   DONORNAME: 'full_name',            // Gift Deed
