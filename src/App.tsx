@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Home, Image, PenLine, Layers, FilePlus, FileStack, Wrench, HelpCircle, Menu, X, Users, FileSpreadsheet, ScanLine, MoreHorizontal } from 'lucide-react'
+import { Home, Image, PenLine, Layers, FilePlus, FileStack, Wrench, HelpCircle, Menu, X, Users, FileSpreadsheet, ScanLine, MoreHorizontal, Settings } from 'lucide-react'
 import HomePage from './pages/Home'
 import IDCardExtract from './pages/IDCardExtract'
 import FullDocExtract from './pages/FullDocExtract'
