@@ -33,7 +33,7 @@ Extract these fields:
 If a field is blank or unreadable, set it to null.`
       // ----------------------------------------
       
-      const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any)
+      const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any, true)
       
       let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
       const firstBrace = clean.indexOf('{');

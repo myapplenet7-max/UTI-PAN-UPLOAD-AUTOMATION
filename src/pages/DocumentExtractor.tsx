@@ -73,7 +73,7 @@ Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY forma
         // ----------------------------------------
         
         try {
-          const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any)
+          const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any, true)
           let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
           const firstBrace = clean.indexOf('{');
           const lastBrace = clean.lastIndexOf('}');
