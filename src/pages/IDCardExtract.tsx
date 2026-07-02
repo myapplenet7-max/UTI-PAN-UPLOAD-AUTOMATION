@@ -147,7 +147,7 @@ export default function IDCardExtract({ apiKeys, selectedAi, autoFailover, navig
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <button className={`btn ${!isHalfPage ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setIsHalfPage(false)}>Full / Draw Box</button>
             <button className={`btn ${isHalfPage ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setIsHalfPage(true)}>Half Page (Auto Split)</button>
-            <button className="btn btn-ghost" onClick={() => onFile(file!)}><RefreshCw size={14} /> Reset</button>
+            <button className="btn btn-ghost" onClick={() => { setFile(null); setImgUrl(null); setResults([]); setStatus('idle'); setCurrentEditIndex(null) }}><RefreshCw size={14} /> Reset</button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>{isHalfPage ? "We'll auto-crop the image exactly in half." : "Drag a box on the image to crop manually."}</p>
           

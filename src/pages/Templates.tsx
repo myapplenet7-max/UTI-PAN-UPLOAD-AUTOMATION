@@ -6,6 +6,7 @@ import { autoFillFromApplicant } from '../lib/applicantToTemplate'
 import { downloadBlob, fileToBase64, extractTextFromPdf } from '../lib/utils'
 import { callAI } from '../lib/aiApi'
 import { generateDocxBlob, buildDocxFilename } from '../lib/templateToDocx'
+import TemplateHighlightPreview from '../components/TemplateHighlightPreview'
 
 type View = 'list' | 'editor' | 'fill'
 
@@ -156,6 +157,15 @@ ${textContent.slice(0, 15000)}`
         <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Template Content</label>
         <textarea value={content} onChange={e => setContent(e.target.value)} rows={18} placeholder={'This is to certify that {{NAME}}, S/O {{FATHER_NAME}}, residing at {{ADDRESS}}, ...'} style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontFamily: 'monospace', fontSize: 13, resize: 'vertical', marginBottom: 12 }} />
         {placeholders.length > 0 && (<div style={{ marginBottom: 16 }}><div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Detected fields ({placeholders.length}):</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{placeholders.map(p => <span key={p} className="badge">{p}</span>)}</div></div>)}
+        {content.trim() && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+              <Eye size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+              Original document preview — highlighted words became placeholders
+            </label>
+            <TemplateHighlightPreview content={content} />
+          </div>
+        )}
         <button className="btn btn-primary" onClick={handleSave} disabled={saving || !name.trim() || !content.trim()}>{saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />} Save Template</button>
       </div>
     </div>
@@ -173,6 +183,8 @@ function TemplateFiller({ template, onClose }: { template: Template; onClose: ()
   const [showSearch, setShowSearch] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [activeField, setActiveField] = useState<string | null>(null)
+  const fieldRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   async function runSearch() {
     const q = query.trim()
@@ -236,13 +248,18 @@ function TemplateFiller({ template, onClose }: { template: Template; onClose: ()
         )}
         {applicant && (<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid var(--accent)', marginBottom: 16 }}><span style={{ fontSize: 13 }}><Check size={14} style={{ verticalAlign: -2, marginRight: 6 }} color="var(--accent)" /> Auto-filled from <strong>{applicant.full_name}</strong> ({placeholders.length - unmatched.length}/{placeholders.length} fields matched)</span><button className="btn btn-ghost" onClick={() => setShowSearch(true)}>Change</button></div>)}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          {placeholders.map(p => (<div key={p}><label style={{ fontSize: 11, display: 'block', marginBottom: 4, color: unmatched.includes(p) ? 'var(--amber, #d97706)' : 'var(--text3)' }}>{p.replace(/_/g, ' ')}{unmatched.includes(p) && applicant && ' (not on file — enter manually)'}</label><input type="text" value={values[p] || ''} onChange={e => setValues(v => ({ ...v, [p]: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `${unmatched.includes(p) && applicant ? 'var(--amber, #d97706)' : 'var(--border)'}`, background: 'var(--bg3)', color: 'var(--text)' }} /></div>))}
+          {placeholders.map(p => (<div key={p}><label style={{ fontSize: 11, display: 'block', marginBottom: 4, color: unmatched.includes(p) ? 'var(--amber, #d97706)' : 'var(--text3)' }}>{p.replace(/_/g, ' ')}{unmatched.includes(p) && applicant && ' (not on file — enter manually)'}</label><input ref={el => { fieldRefs.current[p] = el }} type="text" value={values[p] || ''} onFocus={() => setActiveField(p)} onBlur={() => setActiveField(f => f === p ? null : f)} onChange={e => setValues(v => ({ ...v, [p]: e.target.value }))} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `${unmatched.includes(p) && applicant ? 'var(--amber, #d97706)' : 'var(--border)'}`, background: 'var(--bg3)', color: 'var(--text)' }} /></div>))}
         </div>
         {!allFilled && (<p style={{ fontSize: 12, color: 'var(--amber, #d97706)', marginBottom: 12 }}>Some fields are still empty — they will appear as raw placeholder tokens in the output until filled.</p>)}
       </div>
       <div className="card">
-        <div className="card-title"><Eye size={16} style={{ marginRight: 6, verticalAlign: -3 }} />Preview</div>
-        <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, background: 'var(--bg3)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>{filledPreview}</pre>
+        <div className="card-title"><Eye size={16} style={{ marginRight: 6, verticalAlign: -3 }} />Preview — original document with placeholder fields highlighted</div>
+        <TemplateHighlightPreview
+          content={template.content}
+          values={values}
+          activeField={activeField}
+          onFieldClick={(key) => { setActiveField(key); fieldRefs.current[key]?.focus() }}
+        />
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="btn btn-primary" onClick={handleDownloadDocx} disabled={saving}>{saving ? <Loader2 size={14} className="spin" /> : <FileText size={14} />} Download as Word (.docx)</button>
           <button className="btn btn-secondary" onClick={handleDownloadPdf} disabled={saving}><Download size={14} /> Download as PDF</button>
