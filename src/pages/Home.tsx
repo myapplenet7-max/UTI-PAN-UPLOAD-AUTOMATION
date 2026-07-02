@@ -1,5 +1,5 @@
 // src/pages/Home.tsx
-import { FileText, Image as ImageIcon, FileSpreadsheet } from 'lucide-react'
+import { FileText, Image as ImageIcon, FileSpreadsheet, Settings } from 'lucide-react'
 
 export default function Home({ navigate }: { navigate: (p: string) => void }) {
   return (
