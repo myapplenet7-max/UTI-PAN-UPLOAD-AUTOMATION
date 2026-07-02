@@ -106,16 +106,21 @@ Your task is to locate the bounding boxes for the physical edges of each documen
 4. Face Photo
 5. Signature
 
-Return a JSON array of objects. Each object MUST have: 
+CRITICAL INSTRUCTION: Return a JSON array of objects. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Return ONLY raw JSON.
+Each object MUST have: 
 - "label": exactly one of "aadhaar", "pan", "voter", "photo", "signature".
 - "box": [x, y, width, height] as percentages (0 to 100) relative to the image width and height.
-Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.
-Return ONLY valid JSON, do not wrap in code fences.`;
-      // SMART ROUTING: Force Gemini for auto-detection (best spatial vision)
-      const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, 'image/jpeg')
-      const clean = response.replace(/```json|```/g, '').trim();
-      const detections = JSON.parse(clean);
+Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.`;
       
+      const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type);
+      let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      const firstBrace = clean.indexOf('[');
+      const lastBrace = clean.lastIndexOf(']');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        clean = clean.substring(firstBrace, lastBrace + 1);
+      }
+      
+      const detections = JSON.parse(clean);
       clearTimeout(timeout);
       
       if (!Array.isArray(detections) || detections.length === 0) { setStatus('error'); setMsg('AI could not detect any valid documents. Draw manually.'); return; }
@@ -155,10 +160,20 @@ Return ONLY valid JSON, do not wrap in code fences.`;
             try {
               const b64 = await fileToBase64(cropFile)
               const fields = DOC_FIELDS[region.id] || ['name', 'date_of_birth', 'id_number', 'address']
-              const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
-              // SMART ROUTING: Force Groq for simple extraction on cards
+              
+              // --- UPDATED: ULTRA STRICT JSON PROMPT ---
+              const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}.
+CRITICAL INSTRUCTION: Return ONLY raw JSON. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Start directly with '{' and end directly with '}'.
+Rules: If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
+              // -------------------------------------------
+              
               const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, 'image/jpeg')
-              const clean = response.replace(/```json|```/g, '').trim()
+              let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
+              const firstBrace = clean.indexOf('{');
+              const lastBrace = clean.lastIndexOf('}');
+              if (firstBrace !== -1 && lastBrace !== -1) {
+                clean = clean.substring(firstBrace, lastBrace + 1);
+              }
               const info = JSON.parse(clean)
               regionResult.extractedData = info
               for (const [k, v] of Object.entries(info)) { if (v && !merged[k]) merged[k] = v }

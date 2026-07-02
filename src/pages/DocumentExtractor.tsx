@@ -57,16 +57,26 @@ export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, n
         })
       }
 
-      if (apiKeys.gemini || apiKeys.groq) {
+      const hasKey = apiKeys.gemini || apiKeys.openrouter || apiKeys.groq || apiKeys.huggingface;
+      if (hasKey) {
         setMsg('Extracting document information with AI...')
         const b64 = await fileToBase64(file)
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
-        const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
+        
+        // --- UPDATED: ULTRA STRICT JSON PROMPT ---
+        const prompt = `You are a data extraction AI. Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}.
+CRITICAL INSTRUCTION: Return ONLY raw JSON. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Start directly with '{' and end directly with '}'.
+Rules: If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
+        // ----------------------------------------
+        
         try {
-          // SMART ROUTING: Force Groq for Document Extraction (fastest)
-          // SMART ROUTING: Gemini is better at formatting JSON than Groq for complex images.
-const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type as any)
-          const clean = response.replace(/```json|```/g, '').trim()
+          const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any)
+          let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
+          const firstBrace = clean.indexOf('{');
+          const lastBrace = clean.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            clean = clean.substring(firstBrace, lastBrace + 1);
+          }
           const info = JSON.parse(clean)
           setExtractedInfo(info)
           setSavedApplicant(null)
@@ -119,7 +129,6 @@ const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file
             <button className="btn btn-primary" onClick={process} disabled={status === 'processing'}>
               {status === 'processing' ? <><span className="spinner" /> Processing...</> : '📋 Extract Document'}
             </button>
-            {!apiKeys.gemini && !apiKeys.groq && <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 12 }}>Add API key for AI text extraction</span>}
           </div>
         )}
       </div>
