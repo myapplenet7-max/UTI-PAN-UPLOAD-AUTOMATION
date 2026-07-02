@@ -4,7 +4,7 @@ import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
 import { fileToBase64, processImage, processImagePng, compressToTargetKb } from '../lib/utils'
 import { callAI } from '../lib/aiApi'
-import { uploadDataUrl } from '../lib/uploadApi'
+import { uploadBlob } from '../lib/uploadApi'
 import { findLikelyMatches, searchApplicantsByName, saveExtractedDocument, type ApplicantSearchResult } from '../lib/applicantsApi'
 import FieldDataEditor from '../components/FieldDataEditor'
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import UploadZone from '../components/UploadZone'
 import { fileToBase64 } from '../lib/utils'
 import { callAI } from '../lib/aiApi'
