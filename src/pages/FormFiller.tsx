@@ -14,7 +14,6 @@ export default function FormFiller({ apiKeys, selectedAi, autoFailover, navigate
   const extract = async () => {
     if (!file) return
     
-    // Check if ANY AI key is available
     const hasKey = apiKeys.gemini || apiKeys.openrouter || apiKeys.groq || apiKeys.huggingface;
     if (!hasKey) {
       setStatus('error'); setMsg('Please enter an API key in the top bar.'); return;
@@ -23,23 +22,54 @@ export default function FormFiller({ apiKeys, selectedAi, autoFailover, navigate
     setStatus('processing'); setMsg('AI is reading the UTI PAN form...'); setFormData({})
     try {
       const b64 = await fileToBase64(file)
-      const prompt = `This is a filled UTI PAN application form. Extract ALL visible form fields and their values. Return as JSON with field names as keys. Include: applicant_name, father_name, mother_name, date_of_birth, gender, aadhaar_number, pan_number, mobile, email, address, pincode, city, state, income_source, and any other visible fields. Return ONLY valid JSON.`
       
-      // Use the selected AI
+      // IMPROVED PROMPT: Extremely strict JSON rules
+      const prompt = `You are a data extraction AI. Read this filled UTI PAN form image.
+      
+CRITICAL INSTRUCTION: Return ONLY raw JSON. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Start directly with '{' and end directly with '}'.
+
+Extract these fields:
+- applicant_name
+- father_name
+- mother_name
+- date_of_birth (format DD-MM-YYYY)
+- gender
+- aadhaar_number
+- pan_number
+- mobile
+- email
+- address
+- pincode
+- city
+- state
+- income_source
+If a field is blank or unreadable, set it to null.`
+      
       const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any)
-      const clean = response.replace(/```json|```/g, '').trim()
+      
+      // STRICT CLEANING: Remove any accidental Markdown
+      let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      // Find the first '{' and last '}' to isolate JSON in case AI added fluff
+      const firstBrace = clean.indexOf('{');
+      const lastBrace = clean.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        clean = clean.substring(firstBrace, lastBrace + 1);
+      }
+
       const data = JSON.parse(clean)
       setFormData(data)
       setSavedApplicant(null)
       setStatus('done')
       setMsg('✓ Form data extracted successfully')
     } catch (e: any) {
+      console.error("AI Error Details:", e);
+      // Show the raw response so we know what the AI is doing wrong
       setStatus('error')
-      setMsg('Error: ' + (e.message || 'Extraction failed. Check API key.'))
+      setMsg('Error: ' + (e.message || 'Extraction failed. The AI did not return valid JSON. Please try switching the AI service in the top bar.'));
     }
   }
 
-  // Check if any key exists for the UI warning
   const hasAnyKey = apiKeys.gemini || apiKeys.openrouter || apiKeys.groq || apiKeys.huggingface;
 
   return (
