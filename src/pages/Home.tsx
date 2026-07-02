@@ -1,10 +1,10 @@
 // src/pages/Home.tsx
-import { FileText, Image as ImageIcon, FileSpreadsheet, Settings } from 'lucide-react'
+// ULTRA SAFE VERSION: Fixed imports explicitly
+import { FileText, Image, FileSpreadsheet, Settings, Monitor, Cpu } from 'lucide-react'
 
 export default function Home({ navigate }: { navigate: (p: string) => void }) {
   return (
     <div className="page">
-      {/* Hero */}
       <div style={{
         background: 'linear-gradient(135deg, #1a2340 0%, #0f1117 100%)',
         border: '1px solid var(--border)',
@@ -23,7 +23,6 @@ export default function Home({ navigate }: { navigate: (p: string) => void }) {
         </p>
       </div>
 
-      {/* Stats / Info */}
       <div className="stats-row">
         {[
           { label: 'ID Cards', value: '6+', sub: 'Aadhaar, PAN, Voter...' },
