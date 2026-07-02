@@ -1,30 +1,8 @@
-// Keep imports
-export async function callGemini(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
-  const parts: any[] = []
-  if (imageBase64 && imageMime) parts.push({ inline_data: { mime_type: imageMime, data: imageBase64 } })
-  parts.push({ text: prompt })
-
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    // REMOVED generationConfig: { responseMimeType: 'application/json' }
-    body: JSON.stringify({ contents: [{ parts }] })
-  })
-  if (res.status === 429) throw new Error('Rate limit hit on Gemini')
-  if (!res.ok) throw new Error(`Gemini API error ${res.status}`)
-  const data = await res.json()
-  return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || ''
-}
-
-// ... Keep the rest of OpenRouter, Groq, and callAI exactly as it is ...
 // src/lib/aiApi.ts
-// FIXED: 
-//   1. Removed responseMimeType:'application/json' from Gemini — was causing hallucinated fake data
-//      because Gemini was forced to produce valid JSON even when it couldn't read the image
-//   2. callAI now accepts visionOnly flag — when true, skips Groq/HuggingFace (text-only services)
-//      so auto-detect and image extraction never accidentally fall through to a text-only model
+// FIXED: Removed duplicate callGemini function. 
+// The function is now only declared once.
 
-// 1. GEMINI
+// 1. GEMINI (Google)
 export async function callGemini(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
   const parts: any[] = []
   if (imageBase64 && imageMime) {
@@ -35,9 +13,6 @@ export async function callGemini(apiKey: string, prompt: string, imageBase64?: s
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // FIX: removed responseMimeType:'application/json' — this was forcing Gemini to always
-    // produce valid JSON even when it couldn't read the image, resulting in invented fake data.
-    // Now Gemini returns null fields honestly when text is unreadable.
     body: JSON.stringify({ contents: [{ parts }] })
   })
   if (res.status === 429) throw new Error('Rate limit hit on Gemini')
@@ -78,13 +53,10 @@ export async function callGroq(apiKey: string, prompt: string): Promise<string> 
   return data.choices?.[0]?.message?.content || ''
 }
 
-// VISION-CAPABLE SERVICES — only these can process images
+// VISION-CAPABLE SERVICES
 const VISION_SERVICES = new Set(['gemini', 'openrouter'])
 
 // MASTER FUNCTION
-// visionOnly=true: skip text-only services (Groq/HuggingFace) — use this for all
-// calls that send an image. Prevents fake data from text-only models that hallucinate
-// when they receive a prompt containing image data they can't actually see.
 export async function callAI(
   apiKeys: Record<string, string>,
   prompt: string,
@@ -92,7 +64,7 @@ export async function callAI(
   autoFailover: boolean,
   imageBase64?: string,
   imageMime?: string,
-  visionOnly = false          // FIX: new flag — set true whenever sending an image
+  visionOnly = false
 ): Promise<string> {
 
   const serviceOrder = ['gemini', 'openrouter', 'groq']
@@ -104,7 +76,6 @@ export async function callAI(
     servicesToTry = [selectedAi]
   }
 
-  // FIX: when sending an image, never try text-only services
   if (visionOnly || (imageBase64 && imageMime)) {
     servicesToTry = servicesToTry.filter(s => VISION_SERVICES.has(s))
   }
