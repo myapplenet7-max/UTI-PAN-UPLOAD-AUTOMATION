@@ -1,6 +1,11 @@
 // src/App.tsx
-import { useState, useEffect } from 'react'
-import { Home, ScanLine, FileSpreadsheet, Users, Image, PenLine, Layers, FilePlus, FileStack, Wrench, Settings, HelpCircle, Menu, X, ChevronDown, Server } from 'lucide-react'
+import { useState } from 'react'
+import { 
+  Home, ScanLine, FileSpreadsheet, Users, FileText, 
+  Image, PenLine, Layers, FilePlus, FileStack, Wrench, 
+  Settings, HelpCircle, Menu, X, ChevronDown, Server 
+} from 'lucide-react'
+
 import HomePage from './pages/Home'
 import IDCardExtract from './pages/IDCardExtract'
 import FullDocExtract from './pages/FullDocExtract'
