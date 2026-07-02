@@ -106,19 +106,17 @@ Your task is to locate the bounding boxes for the physical edges of each documen
 4. Face Photo
 5. Signature
 
-CRITICAL INSTRUCTION: Return a JSON array of objects. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Return ONLY raw JSON.
+CRITICAL INSTRUCTION: Return a JSON array of objects. Do NOT include markdown formatting. Return ONLY raw JSON.
 Each object MUST have: 
 - "label": exactly one of "aadhaar", "pan", "voter", "photo", "signature".
 - "box": [x, y, width, height] as percentages (0 to 100) relative to the image width and height.
-Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.`;
+Only return the objects you are highly confident about. Do not include items you cannot clearly see.`;
       
       const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type);
       let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
       const firstBrace = clean.indexOf('[');
       const lastBrace = clean.lastIndexOf(']');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        clean = clean.substring(firstBrace, lastBrace + 1);
-      }
+      if (firstBrace !== -1 && lastBrace !== -1) { clean = clean.substring(firstBrace, lastBrace + 1); }
       
       const detections = JSON.parse(clean);
       clearTimeout(timeout);
@@ -161,13 +159,17 @@ Only return the objects you are highly confident about. Do not include items you
               const b64 = await fileToBase64(cropFile)
               const fields = DOC_FIELDS[region.id] || ['name', 'date_of_birth', 'id_number', 'address']
               
-              // --- UPDATED: ULTRA STRICT JSON PROMPT ---
-              const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}.
-CRITICAL INSTRUCTION: Return ONLY raw JSON. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Start directly with '{' and end directly with '}'.
-Rules: If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
-              // -------------------------------------------
+              // --- THE FIX: FORBID FAKE DATA ---
+              const prompt = `Read this ${region.label} carefully. 
+CRITICAL INSTRUCTION 1: Do NOT guess. If text is blurry, unreadable, or not present, set the value to null. 
+CRITICAL INSTRUCTION 2: Do NOT return dummy or placeholder data (like "Test Name" or 123456789012). It must be real text extracted directly from the image.
+CRITICAL INSTRUCTION 3: Return ONLY raw JSON. No markdown, no conversation, no code fences.
+Extract ONLY these fields: ${fields.join(', ')}.
+Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY format. If you cannot read a field, return null.`
+              // ----------------------------------------
               
-              const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, 'image/jpeg')
+              const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, 'image/jpeg')
+              
               let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
               const firstBrace = clean.indexOf('{');
               const lastBrace = clean.lastIndexOf('}');

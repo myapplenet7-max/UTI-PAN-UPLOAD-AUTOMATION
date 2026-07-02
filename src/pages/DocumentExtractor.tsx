@@ -63,10 +63,13 @@ export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, n
         const b64 = await fileToBase64(file)
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
         
-        // --- UPDATED: ULTRA STRICT JSON PROMPT ---
-        const prompt = `You are a data extraction AI. Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}.
-CRITICAL INSTRUCTION: Return ONLY raw JSON. Do NOT include markdown formatting like \`\`\`json. Do NOT include any greetings, explanations, or conversation. Start directly with '{' and end directly with '}'.
-Rules: If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
+        // --- THE FIX: FORBID FAKE DATA ---
+        const prompt = `Read this ${docLabel} carefully. 
+CRITICAL INSTRUCTION 1: Do NOT guess. If text is blurry, unreadable, or not present, set the value to null. 
+CRITICAL INSTRUCTION 2: Do NOT return dummy or placeholder data (like "Test Name" or 123456789012). It must be real text extracted directly from the image.
+CRITICAL INSTRUCTION 3: Return ONLY raw JSON. No markdown, no conversation, no code fences.
+Extract ONLY these fields: ${fields.join(', ')}.
+Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY format. If you cannot read a field, return null.`
         // ----------------------------------------
         
         try {
