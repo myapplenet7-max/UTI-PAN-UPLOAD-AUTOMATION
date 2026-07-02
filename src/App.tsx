@@ -26,12 +26,7 @@ type Page =
   | 'applicants' | 'templates'
 
 const NAV = [
-  {
-    label: 'Main',
-    items: [
-      { id: 'dashboard', label: 'Dashboard', icon: Home },
-    ]
-  },
+  { label: 'Main', items: [{ id: 'dashboard', label: 'Dashboard', icon: Home }] },
   {
     label: 'Records',
     items: [
@@ -56,20 +51,24 @@ const NAV = [
   },
   {
     label: 'Support',
-    items: [
-      { id: 'faq', label: 'FAQ', icon: HelpCircle },
-    ]
+    items: [{ id: 'faq', label: 'FAQ', icon: HelpCircle }]
   }
 ]
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('claude_api_key') || '')
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('ai_api_key') || '')
+  const [selectedAi, setSelectedAi] = useState(() => localStorage.getItem('selected_ai_service') || 'gemini')
 
   const saveKey = (k: string) => {
     setApiKey(k)
-    localStorage.setItem('claude_api_key', k)
+    localStorage.setItem('ai_api_key', k)
+  }
+
+  const saveAiService = (service: string) => {
+    setSelectedAi(service)
+    localStorage.setItem('selected_ai_service', service)
   }
 
   const navigate = (p: Page) => {
@@ -79,29 +78,28 @@ export default function App() {
   }
 
   const renderPage = () => {
-    const props = { apiKey, navigate }
+    const props = { apiKey, selectedAi, navigate }
     switch (page) {
       case 'dashboard': return <Dashboard navigate={navigate} />
       case 'photo': return <PhotoExtract apiKey={apiKey} />
       case 'signature': return <SignatureExtract apiKey={apiKey} />
       case 'photo-sig': return <PhotoWithSignature apiKey={apiKey} />
-      case 'document': return <DocumentExtractor apiKey={apiKey} navigate={navigate} />
-      case 'combined-scan': return <CombinedScan apiKey={apiKey} navigate={navigate} />
-      case 'form': return <FormFiller apiKey={apiKey} navigate={navigate} />
+      case 'document': return <DocumentExtractor {...props} />
+      case 'combined-scan': return <CombinedScan {...props} />
+      case 'form': return <FormFiller {...props} />
       case 'correction': return <CorrectionPacket apiKey={apiKey} />
       case 'newpan': return <NewPanPacket apiKey={apiKey} />
       case 'pdf': return <PdfTools />
       case 'image': return <ImageTools />
       case 'faq': return <FAQ />
       case 'applicants': return <Applicants />
-      case 'templates': return <Templates apiKey={apiKey} />
+      case 'templates': return <Templates {...props} />
       default: return <Dashboard navigate={navigate} />
     }
   }
 
   return (
     <div className="layout">
-      {/* Mobile header */}
       <div className="mobile-header">
         <button className="menu-btn" onClick={() => setSidebarOpen(true)}>
           <Menu size={22} />
@@ -109,10 +107,8 @@ export default function App() {
         <h1>UTI PAN Auto</h1>
       </div>
 
-      {/* Overlay */}
       <div className={`overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-      {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <div className="logo">
@@ -139,18 +135,36 @@ export default function App() {
         ))}
       </aside>
 
-      {/* Main */}
       <main className="main">
         {/* API Key bar */}
         <div className="api-key-bar">
-          <label>Claude API Key:</label>
-          <input
-            type="password"
-            placeholder="sk-ant-api03-..."
-            value={apiKey}
-            onChange={e => saveKey(e.target.value)}
-          />
-          {apiKey && <span style={{ color: 'var(--green)', fontSize: 12 }}>✓ Set</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
+            
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>AI Service:</label>
+            <select 
+              value={selectedAi}
+              onChange={(e) => saveAiService(e.target.value)}
+              style={{
+                padding: '6px 12px', borderRadius: 6, background: 'var(--bg3)', 
+                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 13
+              }}
+            >
+              <option value="gemini">Gemini (Google)</option>
+              <option value="openrouter">OpenRouter (Universal)</option>
+              <option value="groq">Groq (Fastest)</option>
+              <option value="huggingface">Hugging Face (Open Source)</option>
+            </select>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>API Key:</label>
+            <input
+              type="password"
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={e => saveKey(e.target.value)}
+              style={{ flex: 1, minWidth: '200px', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)' }}
+            />
+            {apiKey && <span style={{ color: 'var(--green)', fontSize: 12 }}>✓ Set</span>}
+          </div>
         </div>
 
         {renderPage()}

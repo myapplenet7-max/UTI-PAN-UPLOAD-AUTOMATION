@@ -1,8 +1,8 @@
-// src/pages/DocumentExtractor.tsx
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
-import { callGemini, fileToBase64, processImage } from '../lib/utils'
+import { fileToBase64, processImage } from '../lib/utils'
+import { callAI } from '../lib/aiApi'
 import ApplicantMatchPicker from '../components/ApplicantMatchPicker'
 
 const DOC_TYPES = [
@@ -23,7 +23,7 @@ const DOC_FIELDS: Record<string, string[]> = {
   birth: ['name', 'date_of_birth', 'gender', 'father_name', 'mother_name', 'place_of_birth', 'registration_number'],
 }
 
-export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string; navigate?: (p: any) => void }) {
+export default function DocumentExtractor({ apiKey, selectedAi, navigate }: { apiKey: string; selectedAi: string; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [docType, setDocType] = useState('aadhaar')
   const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
@@ -39,7 +39,6 @@ export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string
     try {
       const out: any[] = []
 
-      // Added support for PDFs directly
       const docLabel = DOC_TYPES.find(d => d.id === docType)?.label || docType
       if (file.type === 'application/pdf') {
         out.push({
@@ -64,7 +63,7 @@ export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
         const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
         try {
-          const response = await callGemini(apiKey, prompt, b64, file.type as any)
+          const response = await callAI(apiKey, prompt, selectedAi, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)

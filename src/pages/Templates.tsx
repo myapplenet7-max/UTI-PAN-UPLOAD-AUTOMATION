@@ -1,15 +1,15 @@
-// src/pages/Templates.tsx
 import { useState, useEffect, useRef } from 'react'
 import { FileSpreadsheet, Plus, Search, User, Loader2, Eye, Save, Download, ChevronLeft, Check, Edit2, Trash2, FileText, Sparkles, Upload, X } from 'lucide-react'
 import { getTemplates, saveTemplate, updateTemplate, deleteTemplate, extractPlaceholders, fillTemplate, type Template } from '../lib/templateStorageApi'
 import { searchApplicantsByName, searchApplicantByAadhaar, searchApplicantByPan, getApplicant, type ApplicantSearchResult } from '../lib/applicantsApi'
 import { autoFillFromApplicant } from '../lib/applicantToTemplate'
-import { downloadBlob, callGemini, fileToBase64 } from '../lib/utils'
+import { downloadBlob, callGemini, fileToBase64, extractTextFromPdf } from '../lib/utils'
+import { callAI } from '../lib/aiApi'
 import { generateDocxBlob, buildDocxFilename } from '../lib/templateToDocx'
 
 type View = 'list' | 'editor' | 'fill'
 
-export default function Templates({ apiKey }: { apiKey?: string }) {
+export default function Templates({ apiKey, selectedAi }: { apiKey?: string; selectedAi?: string }) {
   const [view, setView] = useState<View>('list')
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,7 +23,7 @@ export default function Templates({ apiKey }: { apiKey?: string }) {
   }
 
   if (view === 'editor') {
-    return (<TemplateEditor template={activeTemplate} apiKey={apiKey} onSaved={() => { setView('list'); setActiveTemplate(null); load() }} onCancel={() => { setView('list'); setActiveTemplate(null) }} />)
+    return (<TemplateEditor template={activeTemplate} apiKey={apiKey} selectedAi={selectedAi || 'gemini'} onSaved={() => { setView('list'); setActiveTemplate(null); load() }} onCancel={() => { setView('list'); setActiveTemplate(null) }} />)
   }
   if (view === 'fill' && activeTemplate) {
     return (<TemplateFiller template={activeTemplate} onClose={() => { setView('list'); setActiveTemplate(null) }} />)
@@ -58,7 +58,7 @@ export default function Templates({ apiKey }: { apiKey?: string }) {
   )
 }
 
-function TemplateEditor({ template, apiKey, onSaved, onCancel }: { template: Template | null; apiKey?: string; onSaved: () => void; onCancel: () => void }) {
+function TemplateEditor({ template, apiKey, selectedAi, onSaved, onCancel }: { template: Template | null; apiKey?: string; selectedAi: string; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(template?.name || '')
   const [content, setContent] = useState(template?.content || '')
   const [saving, setSaving] = useState(false)
@@ -78,23 +78,6 @@ function TemplateEditor({ template, apiKey, onSaved, onCancel }: { template: Tem
     } finally { setSaving(false) }
   }
 
-  // Fixed PDF Extraction to avoid CDN error
-  async function extractTextFromPdfLocal(file: File): Promise<string> {
-    const pdfjs = await import('pdfjs-dist');
-    // Use the local worker shipped with the node module instead of external CDN
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString();
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-    let fullText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item: any) => item.str).join(' ');
-      fullText += pageText + '\n\n';
-    }
-    return fullText.trim();
-  }
-
   async function handleAiGenerate() {
     if (!aiFile || !apiKey) return
     setAiStatus('loading'); setAiMsg('Reading document...')
@@ -109,12 +92,12 @@ function TemplateEditor({ template, apiKey, onSaved, onCancel }: { template: Tem
         textContent = result.value
       } else if (mime === 'application/pdf') {
         setAiMsg('Extracting text from PDF...')
-        textContent = await extractTextFromPdfLocal(aiFile)
+        textContent = await extractTextFromPdf(aiFile)
       } else {
-        setAiMsg('Sending scanned document to Gemini AI...')
+        setAiMsg('Sending scanned document to AI...')
         const b64 = await fileToBase64(aiFile)
         const readPrompt = `Read every word of this document carefully. It contains a mix of Telugu and/or English text (if both, read both). Extract the COMPLETE full text of the document, preserving structure, paragraphs, and headings. Return ONLY the plain text content, no commentary.`
-        textContent = await callGemini(apiKey, readPrompt, b64, mime as any)
+        textContent = await callAI(apiKey, readPrompt, selectedAi, b64, mime)
       }
       setAiMsg('Generating template structure with placeholders...')
       const templatePrompt = `You are a document template generator for government certificates and affidavits. Below is the text of an official document. It may be in Telugu, English, or both.
@@ -128,7 +111,7 @@ Your task:
 Return ONLY the template text with {{PLACEHOLDER}} tokens — no explanation, no JSON, no markdown. Just the raw template string.
 DOCUMENT TEXT:
 ${textContent.slice(0, 15000)}`
-
+      // We STILL use Gemini for placeholder generation because it's the best
       const templateText = await callGemini(apiKey, templatePrompt)
       setContent(templateText.trim())
       if (!name.trim()) {
@@ -247,9 +230,7 @@ function TemplateFiller({ template, onClose }: { template: Template; onClose: ()
               <button className="btn btn-primary" onClick={runSearch} disabled={searching}>{searching ? <Loader2 size={14} className="spin" /> : <Search size={14} />}</button>
               <button className="btn btn-secondary" onClick={() => setShowSearch(false)}>Skip — Fill Manually</button>
             </div>
-            {results.length > 0 && (<div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              {results.map(r => (<button key={r.id} onClick={() => selectApplicant(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer', textAlign: 'left', color: 'var(--text)' }}><User size={14} color="var(--text3)" /><div><div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{r.full_name}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.aadhaar_number && `Aadhaar: ${r.aadhaar_number}`}</div></div></button>))}
-            </div>)}
+            {results.length > 0 && (<div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>{results.map(r => (<button key={r.id} onClick={() => selectApplicant(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer', textAlign: 'left', color: 'var(--text)' }}><User size={14} color="var(--text3)" /><div><div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{r.full_name}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.aadhaar_number && `Aadhaar: ${r.aadhaar_number}`}</div></div></button>))}</div>)}
           </>
         )}
         {applicant && (<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid var(--accent)', marginBottom: 16 }}><span style={{ fontSize: 13 }}><Check size={14} style={{ verticalAlign: -2, marginRight: 6 }} color="var(--accent)" /> Auto-filled from <strong>{applicant.full_name}</strong> ({placeholders.length - unmatched.length}/{placeholders.length} fields matched)</span><button className="btn btn-ghost" onClick={() => setShowSearch(true)}>Change</button></div>)}
