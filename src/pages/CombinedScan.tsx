@@ -73,14 +73,13 @@ export default function CombinedScan({ apiKey, navigate }: { apiKey: string; nav
   const endDraw = () => setDrawing(null)
   const clearRegion = (id: RegionId) => setRegions(prev => prev.map(r => r.id === id ? { ...r, rect: null } : r))
 
-  const cropRegion = (rect: { x: number; y: number; w: number; h: number }, preserveAspect: boolean = false): Promise<Blob> => {
+  const cropRegion = (rect: { x: number; y: number; w: number; h: number }): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = imgRef.current
       if (!img) return reject(new Error('no image'))
       const canvas = document.createElement('canvas')
       const x = Math.round((rect.x / 100) * img.naturalWidth); const y = Math.round((rect.y / 100) * img.naturalHeight)
       const w = Math.round((rect.w / 100) * img.naturalWidth); const h = Math.round((rect.h / 100) * img.naturalHeight)
-      
       canvas.width = w; canvas.height = h
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(img, x, y, w, h, 0, 0, w, h)
@@ -88,10 +87,16 @@ export default function CombinedScan({ apiKey, navigate }: { apiKey: string; nav
     })
   }
 
-  // ── Auto-Detect Function (MODIFIED PROMPT) ──────────────────────────────
   const autoDetectRegions = async () => {
     if (!file || !apiKey) { setStatus('error'); setMsg('Upload a file and provide an API key for auto-detection.'); return; }
     setStatus('processing'); setMsg('AI is analyzing the scan to detect Aadhaar, PAN, Voter, Photo, Signature...')
+    
+    // Timeout to prevent infinite loading if AI fails
+    const timeout = setTimeout(() => {
+        setStatus('error'); 
+        setMsg('Auto-detection timed out. The Gemini API may be busy. Please try drawing manually.');
+    }, 30000); // 30 second timeout
+
     try {
       const b64 = await fileToBase64(file);
       const prompt = `This is a scanned A4 sheet containing multiple Indian government documents and photos. 
@@ -111,6 +116,8 @@ Return ONLY valid JSON, do not wrap in code fences.`;
       const clean = response.replace(/```json|```/g, '').trim();
       const detections = JSON.parse(clean);
       
+      clearTimeout(timeout); // Clear timeout if success
+      
       if (!Array.isArray(detections) || detections.length === 0) { setStatus('error'); setMsg('AI could not detect any valid documents. Draw manually.'); return; }
       
       setRegions(prev => prev.map(r => {
@@ -121,7 +128,11 @@ Return ONLY valid JSON, do not wrap in code fences.`;
         return r;
       }));
       setStatus('done'); setMsg(`✓ Auto-detected ${detections.length} items! Review the boxes and hit "Crop & Extract".`);
-    } catch (e: any) { setStatus('error'); setMsg('Auto-detect error: ' + (e.message || 'Check API key or try manual drawing.')); }
+    } catch (e: any) { 
+      clearTimeout(timeout); // Clear timeout on error
+      setStatus('error'); 
+      setMsg('Auto-detect error: ' + (e.message || 'Check API key or try manual drawing.')); 
+    }
   }
 
   const processAll = async () => {
@@ -131,11 +142,10 @@ Return ONLY valid JSON, do not wrap in code fences.`;
     try {
       const out: RegionResult[] = []; const merged: Record<string, any> = {}
       for (const region of drawn) {
-        const blob = await cropRegion(region.rect!, false) // Fixed: Removed forced stretching
+        const blob = await cropRegion(region.rect!)
         const cropFile = new File([blob], `${region.id}.jpg`, { type: 'image/jpeg' })
         
         if (region.kind === 'id') {
-          // Fixed: Preserved natural aspect ratio using processImagePng, not forcing 1240x877
           const processed = await processImagePng(cropFile, { width: 0, height: 0, threshold: 240 }) 
           const regionResult: RegionResult = { 
             regionId: region.id, label: region.label, kind: region.kind, 
@@ -143,7 +153,7 @@ Return ONLY valid JSON, do not wrap in code fences.`;
               label: `${region.label} JPG`, 
               dataUrl: processed.dataUrl, 
               filename: `${region.id}.jpg`, 
-              width: 1240, height: 877, dpi: 150, format: 'JPG' // We report UTI standard specs, but actually keep original ratio
+              width: 1240, height: 877, dpi: 150, format: 'JPG'
             }] 
           }
           if (apiKey) {
@@ -162,9 +172,15 @@ Return ONLY valid JSON, do not wrap in code fences.`;
           out.push(regionResult)
         }
         if (region.kind === 'photo') {
+          // Added 3.5x4.5 custom size (413x531 pixels) at 300 DPI
           const uti = await processImage(cropFile, { width: 213, height: 213, whiteBg: true, quality: 0.85 })
+          const custom3545 = await processImage(cropFile, { width: 413, height: 531, whiteBg: true, quality: 0.92 }) 
           const wb = await processImage(cropFile, { width: 213, height: 213, whiteBg: true, quality: 0.9 })
-          out.push({ regionId: region.id, label: region.label, kind: region.kind, files: [{ label: 'UTI Photo JPG (213×213)', dataUrl: uti.dataUrl, filename: 'uti-photo.jpg', width: 213, height: 213, dpi: 300, format: 'JPG' }, { label: 'White Background Photo', dataUrl: wb.dataUrl, filename: 'white-bg-photo.jpg', width: 213, height: 213, dpi: 300, format: 'JPG' }] })
+          out.push({ regionId: region.id, label: region.label, kind: region.kind, files: [
+            { label: 'UTI Photo JPG (213×213)', dataUrl: uti.dataUrl, filename: 'uti-photo.jpg', width: 213, height: 213, dpi: 300, format: 'JPG' },
+            { label: '3.5x4.5 Photo JPG (413×531)', dataUrl: custom3545.dataUrl, filename: '35x45-photo.jpg', width: 413, height: 531, dpi: 300, format: 'JPG' },
+            { label: 'White Background Photo', dataUrl: wb.dataUrl, filename: 'white-bg-photo.jpg', width: 213, height: 213, dpi: 300, format: 'JPG' }
+          ]})
         }
         if (region.kind === 'signature') {
           const sigJpg = await processImage(cropFile, { width: 400, height: 200, whiteBg: true, quality: 0.9 })
