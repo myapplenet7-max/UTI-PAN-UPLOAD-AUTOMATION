@@ -1,3 +1,7 @@
+// src/lib/utils.ts
+
+// (Note: We are removing the duplicate callGemini function from this file)
+
 export async function callClaude(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
   const content: any[] = []
   if (imageBase64 && imageMime) {
@@ -30,39 +34,6 @@ export async function callClaude(apiKey: string, prompt: string, imageBase64?: s
 
   const data = await res.json()
   return data.content.map((b: any) => b.text || '').join('')
-}
-
-// Gemini API
-export async function callGemini(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
-  const parts: any[] = []
-  if (imageBase64 && imageMime) {
-    parts.push({
-      inline_data: { mime_type: imageMime, data: imageBase64 }
-    })
-  }
-  parts.push({ text: prompt })
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { responseMimeType: 'application/json' }
-      })
-    }
-  )
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `API error ${res.status}`)
-  }
-
-  const data = await res.json()
-  const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || ''
-  if (!text) throw new Error('Gemini returned an empty response')
-  return text
 }
 
 export function fileToBase64(file: File): Promise<string> {
@@ -148,6 +119,7 @@ export function processImage(
   })
 }
 
+// FIXED processImagePng - Prevents black boxes from rendering
 export function processImagePng(
   file: File,
   opts: { width?: number; height?: number; grayscale?: boolean; threshold?: number }
@@ -163,6 +135,9 @@ export function processImagePng(
       else if (opts.width) { height = Math.round((img.height / img.width) * opts.width); width = opts.width }
       canvas.width = width; canvas.height = height
       const ctx = canvas.getContext('2d')!
+      
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
       ctx.drawImage(img, 0, 0, width, height)
 
       if (opts.threshold !== undefined) {
@@ -171,7 +146,7 @@ export function processImagePng(
           const g = d.data[i] * 0.299 + d.data[i+1] * 0.587 + d.data[i+2] * 0.114
           const v = g > opts.threshold ? 255 : 0
           d.data[i] = d.data[i+1] = d.data[i+2] = v
-          d.data[i+3] = v === 255 ? 0 : 255 // transparent bg
+          d.data[i+3] = v === 255 ? 0 : 255
         }
         ctx.putImageData(d, 0, 0)
       } else if (opts.grayscale) {
@@ -230,14 +205,7 @@ export function compressToTargetKb(file: File, targetKb: number): Promise<{ data
 // 🚀 COMPLETELY FIXED PDF TEXT EXTRACTOR 🚀
 // ==========================================
 export async function extractTextFromPdf(file: File): Promise<string> {
-  // This uses a fully offline, native JavaScript approach that does NOT rely on external CDNs.
-  // It reads the file as an ArrayBuffer and parses it directly in the browser.
-  
-  // Dynamically import the pdfjs-dist library
   const pdfjs = await import('pdfjs-dist');
-  
-  // Disable the worker completely. This forces the PDF to parse in the main browser thread.
-  // It is slightly slower, but it ELIMINATES the "Failed to fetch dynamically imported module" error forever.
   pdfjs.GlobalWorkerOptions.workerSrc = '';
 
   const arrayBuffer = await file.arrayBuffer();
@@ -253,57 +221,3 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 
   return fullText.trim();
 }
-// ... keep your existing imports & the first part ...
-
-// FIXED processImagePng - Prevents black boxes from rendering
-export function processImagePng(
-  file: File,
-  opts: { width?: number; height?: number; grayscale?: boolean; threshold?: number }
-): Promise<{ dataUrl: string; blob: Blob }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const canvas = document.createElement('canvas')
-      let { width, height } = img
-      if (opts.width && opts.height) { width = opts.width; height = opts.height }
-      else if (opts.width) { height = Math.round((img.height / img.width) * opts.width); width = opts.width }
-      canvas.width = width; canvas.height = height
-      const ctx = canvas.getContext('2d')!
-      
-      // Ensure white background is drawn BEFORE image
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-
-      if (opts.threshold !== undefined) {
-        const d = ctx.getImageData(0, 0, width, height)
-        for (let i = 0; i < d.data.length; i += 4) {
-          const g = d.data[i] * 0.299 + d.data[i+1] * 0.587 + d.data[i+2] * 0.114
-          const v = g > opts.threshold ? 255 : 0
-          d.data[i] = d.data[i+1] = d.data[i+2] = v
-          d.data[i+3] = v === 255 ? 0 : 255
-        }
-        ctx.putImageData(d, 0, 0)
-      } else if (opts.grayscale) {
-        const d = ctx.getImageData(0, 0, width, height)
-        for (let i = 0; i < d.data.length; i += 4) {
-          const g = d.data[i] * 0.299 + d.data[i+1] * 0.587 + d.data[i+2] * 0.114
-          d.data[i] = d.data[i+1] = d.data[i+2] = g
-        }
-        ctx.putImageData(d, 0, 0)
-      }
-
-      const dataUrl = canvas.toDataURL('image/png')
-      canvas.toBlob(blob => {
-        if (!blob) return reject(new Error('Canvas toBlob failed'))
-        resolve({ dataUrl, blob })
-      }, 'image/png')
-    }
-    img.onerror = reject
-    img.src = url
-  })
-}
-
-// Keep the rest of your file unchanged (extractTextFromPdf, etc.)
