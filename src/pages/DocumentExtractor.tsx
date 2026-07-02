@@ -64,7 +64,8 @@ export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, n
         const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
         try {
           // SMART ROUTING: Force Groq for Document Extraction (fastest)
-          const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, file.type as any)
+          // SMART ROUTING: Gemini is better at formatting JSON than Groq for complex images.
+const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)

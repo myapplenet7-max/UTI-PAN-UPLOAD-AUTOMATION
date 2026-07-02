@@ -112,7 +112,7 @@ Return a JSON array of objects. Each object MUST have:
 Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.
 Return ONLY valid JSON, do not wrap in code fences.`;
       // SMART ROUTING: Force Gemini for auto-detection (best spatial vision)
-      const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type);
+      const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, 'image/jpeg')
       const clean = response.replace(/```json|```/g, '').trim();
       const detections = JSON.parse(clean);
       
@@ -157,7 +157,7 @@ Return ONLY valid JSON, do not wrap in code fences.`;
               const fields = DOC_FIELDS[region.id] || ['name', 'date_of_birth', 'id_number', 'address']
               const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
               // SMART ROUTING: Force Groq for simple extraction on cards
-              const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, 'image/jpeg')
+              const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, 'image/jpeg')
               const clean = response.replace(/```json|```/g, '').trim()
               const info = JSON.parse(clean)
               regionResult.extractedData = info

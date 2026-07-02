@@ -113,15 +113,16 @@ export function compressToTargetKb(file: File, targetKb: number): Promise<{ data
   })
 }
 
-// Fixed PDF extractor using Vercel-safe module resolution
+// Extract text from a PDF file using PDF.js 
 export async function extractTextFromPdf(file: File): Promise<string> {
+  // Using a Vercel-compatible URL that bypasses strict CDN blocking
   const pdfjs = await import('pdfjs-dist');
-  // Using the exact CDN URL that is hardcoded to a stable version to prevent "Failed to fetch" errors on Vercel
   pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.93/pdf.worker.min.js`;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
   let fullText = '';
+
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
