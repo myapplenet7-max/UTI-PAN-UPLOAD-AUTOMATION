@@ -104,7 +104,7 @@ export default function App() {
       case 'photo-sig': return <PhotoWithSignature apiKey={keys.gemini} />
       case 'document': return <DocumentExtractor {...props} />
       case 'combined-scan': return <CombinedScan {...props} />
-      case 'form': return <FormFiller {...props} />
+      case 'form': return <FormFiller apiKeys={keys} selectedAi={selectedAi} autoFailover={autoFailover} navigate={navigate} />
       case 'correction': return <CorrectionPacket apiKey={keys.gemini} />
       case 'newpan': return <NewPanPacket apiKey={keys.gemini} />
       case 'pdf': return <PdfTools />
