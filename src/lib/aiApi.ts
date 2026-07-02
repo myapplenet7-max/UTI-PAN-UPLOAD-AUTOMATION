@@ -1,3 +1,22 @@
+// Keep imports
+export async function callGemini(apiKey: string, prompt: string, imageBase64?: string, imageMime?: string): Promise<string> {
+  const parts: any[] = []
+  if (imageBase64 && imageMime) parts.push({ inline_data: { mime_type: imageMime, data: imageBase64 } })
+  parts.push({ text: prompt })
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // REMOVED generationConfig: { responseMimeType: 'application/json' }
+    body: JSON.stringify({ contents: [{ parts }] })
+  })
+  if (res.status === 429) throw new Error('Rate limit hit on Gemini')
+  if (!res.ok) throw new Error(`Gemini API error ${res.status}`)
+  const data = await res.json()
+  return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || ''
+}
+
+// ... Keep the rest of OpenRouter, Groq, and callAI exactly as it is ...
 // src/lib/aiApi.ts
 // FIXED: 
 //   1. Removed responseMimeType:'application/json' from Gemini — was causing hallucinated fake data

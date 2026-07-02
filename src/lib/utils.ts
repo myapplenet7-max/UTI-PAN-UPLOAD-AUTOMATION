@@ -253,3 +253,57 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 
   return fullText.trim();
 }
+// ... keep your existing imports & the first part ...
+
+// FIXED processImagePng - Prevents black boxes from rendering
+export function processImagePng(
+  file: File,
+  opts: { width?: number; height?: number; grayscale?: boolean; threshold?: number }
+): Promise<{ dataUrl: string; blob: Blob }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      let { width, height } = img
+      if (opts.width && opts.height) { width = opts.width; height = opts.height }
+      else if (opts.width) { height = Math.round((img.height / img.width) * opts.width); width = opts.width }
+      canvas.width = width; canvas.height = height
+      const ctx = canvas.getContext('2d')!
+      
+      // Ensure white background is drawn BEFORE image
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0, width, height)
+
+      if (opts.threshold !== undefined) {
+        const d = ctx.getImageData(0, 0, width, height)
+        for (let i = 0; i < d.data.length; i += 4) {
+          const g = d.data[i] * 0.299 + d.data[i+1] * 0.587 + d.data[i+2] * 0.114
+          const v = g > opts.threshold ? 255 : 0
+          d.data[i] = d.data[i+1] = d.data[i+2] = v
+          d.data[i+3] = v === 255 ? 0 : 255
+        }
+        ctx.putImageData(d, 0, 0)
+      } else if (opts.grayscale) {
+        const d = ctx.getImageData(0, 0, width, height)
+        for (let i = 0; i < d.data.length; i += 4) {
+          const g = d.data[i] * 0.299 + d.data[i+1] * 0.587 + d.data[i+2] * 0.114
+          d.data[i] = d.data[i+1] = d.data[i+2] = g
+        }
+        ctx.putImageData(d, 0, 0)
+      }
+
+      const dataUrl = canvas.toDataURL('image/png')
+      canvas.toBlob(blob => {
+        if (!blob) return reject(new Error('Canvas toBlob failed'))
+        resolve({ dataUrl, blob })
+      }, 'image/png')
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+// Keep the rest of your file unchanged (extractTextFromPdf, etc.)
