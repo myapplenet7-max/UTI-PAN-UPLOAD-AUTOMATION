@@ -1,4 +1,29 @@
 // src/components/ApplicantMatchPicker.tsx
+//
+// Shown immediately after AI extraction succeeds, before the document is
+// saved. Searches for likely existing applicants (by Aadhaar/PAN/name) and
+// lets the operator either:
+//   - Merge into one of the suggested matches
+//   - Search manually for a different applicant
+//   - Create a brand new applicant record
+//
+// Usage (inside DocumentExtractor.tsx / FormFiller.tsx, after extraction):
+//
+//   const [pendingExtraction, setPendingExtraction] = useState(null)
+//   ...
+//   // after AI returns `info`:
+//   setPendingExtraction(info)
+//   ...
+//   {pendingExtraction && (
+//     <ApplicantMatchPicker
+//       extractedData={pendingExtraction}
+//       documentType={docType}
+//       fileName={file?.name}
+//       onSaved={(applicant) => { setPendingExtraction(null); ... }}
+//       onCancel={() => setPendingExtraction(null)}
+//     />
+//   )}
+
 import { useState, useEffect } from 'react'
 import { Search, UserPlus, Users, Check, Loader2 } from 'lucide-react'
 import {
@@ -7,11 +32,14 @@ import {
   saveExtractedDocument,
   type ApplicantSearchResult,
 } from '../lib/applicantsApi'
+import { uploadDataUrl } from '../lib/uploadApi'
 
 interface Props {
   extractedData: Record<string, any>
   documentType: string
   fileName?: string
+  imageDataUrl?: string   // the processed/cropped image (from processDocumentImage) — uploaded to
+                           // Vercel Blob at save time and linked as documents.file_url
   ocrText?: string
   confidence?: Record<string, number>
   onSaved: (applicant: any, document: any) => void
@@ -19,7 +47,7 @@ interface Props {
 }
 
 export default function ApplicantMatchPicker({
-  extractedData, documentType, fileName, ocrText, confidence,
+  extractedData, documentType, fileName, imageDataUrl, ocrText, confidence,
   onSaved, onCancel,
 }: Props) {
   const [loading, setLoading] = useState(true)
@@ -31,6 +59,7 @@ export default function ApplicantMatchPicker({
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Auto-search for likely matches as soon as the component mounts
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -58,9 +87,29 @@ export default function ApplicantMatchPicker({
     setMode('saving')
     setError(null)
     try {
+      // Upload the processed image first (if we have one) so we can link it
+      // as file_url on the document record — this is what was missing before.
+      let fileUrl: string | undefined
+      if (imageDataUrl) {
+        try {
+          fileUrl = await uploadDataUrl(
+            imageDataUrl,
+            fileName || `${documentType}.jpg`,
+            displayName
+          )
+        } catch (uploadErr: any) {
+          // Don't block saving the extracted text data just because the image
+          // upload failed (e.g. Blob store not connected yet) — save the record
+          // now and surface the upload problem separately.
+          console.error('Image upload failed:', uploadErr)
+          setError('Note: text data saved, but image upload failed — ' + (uploadErr.message || 'unknown error'))
+        }
+      }
+
       const result = await saveExtractedDocument({
         documentType,
         fileName,
+        fileUrl,
         extractedData,
         ocrText,
         confidence,
@@ -108,11 +157,11 @@ export default function ApplicantMatchPicker({
                       padding: '10px 14px', borderRadius: 8, textAlign: 'left',
                       border: `1px solid ${selectedId === m.id ? 'var(--accent)' : 'var(--border)'}`,
                       background: selectedId === m.id ? 'var(--accent-bg)' : 'var(--bg3)',
-                      cursor: 'pointer', color: 'var(--text)' // Added text color
+                      cursor: 'pointer',
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{m.full_name || '(no name)'}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{m.full_name || '(no name)'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {m.aadhaar_number && `Aadhaar: ${m.aadhaar_number}`}
                         {m.pan_number && `  PAN: ${m.pan_number}`}
@@ -176,11 +225,11 @@ export default function ApplicantMatchPicker({
                   style={{
                     display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
                     borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg3)',
-                    cursor: 'pointer', textAlign: 'left', color: 'var(--text)' // Added text color
+                    cursor: 'pointer', textAlign: 'left',
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{m.full_name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{m.full_name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                       {m.document_count} document{m.document_count !== 1 ? 's' : ''} on file
                     </div>

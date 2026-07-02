@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import UploadZone from '../components/UploadZone'
 import ResultCard from '../components/ResultCard'
-import { fileToBase64, processImage } from '../lib/utils'
-import { callAI } from '../lib/aiApi'
+import { callGemini, fileToBase64, detectDocumentBox, processDocumentImage } from '../lib/utils'
 import ApplicantMatchPicker from '../components/ApplicantMatchPicker'
 
 const DOC_TYPES = [
@@ -14,6 +13,7 @@ const DOC_TYPES = [
   { id: 'birth', label: 'Birth Certificate', emoji: '📋' },
 ]
 
+// Field-specific schemas per document type — much more reliable than a generic "extract everything" prompt
 const DOC_FIELDS: Record<string, string[]> = {
   aadhaar: ['name', 'date_of_birth', 'gender', 'aadhaar_number', 'address', 'father_name'],
   pan: ['name', 'father_name', 'date_of_birth', 'pan_number'],
@@ -23,7 +23,7 @@ const DOC_FIELDS: Record<string, string[]> = {
   birth: ['name', 'date_of_birth', 'gender', 'father_name', 'mother_name', 'place_of_birth', 'registration_number'],
 }
 
-export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, navigate }: { apiKeys: any; selectedAi: string; autoFailover: boolean; navigate?: (p: any) => void }) {
+export default function DocumentExtractor({ apiKey, navigate }: { apiKey: string; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [docType, setDocType] = useState('aadhaar')
   const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
@@ -31,6 +31,7 @@ export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, n
   const [results, setResults] = useState<any[]>([])
   const [extractedInfo, setExtractedInfo] = useState<Record<string, string>>({})
   const [savedApplicant, setSavedApplicant] = useState<any>(null)
+  const [processedImageUrl, setProcessedImageUrl] = useState<string | undefined>(undefined)
 
   const process = async () => {
     if (!file) return
@@ -38,48 +39,48 @@ export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, n
 
     try {
       const out: any[] = []
-
       const docLabel = DOC_TYPES.find(d => d.id === docType)?.label || docType
-      if (file.type === 'application/pdf') {
-        out.push({
-          label: `${docLabel} PDF`,
-          dataUrl: URL.createObjectURL(file),
-          filename: `${docType}.pdf`,
-          width: 0, height: 0, dpi: 0, format: 'PDF'
-        })
-      } else {
-        const processed = await processImage(file, { width: 1240, height: 877, whiteBg: true, quality: 0.92 })
-        out.push({
-          label: `${docLabel} JPG`,
-          dataUrl: processed.dataUrl,
-          filename: `${docType}.jpg`,
-          width: 1240, height: 877, dpi: 150, format: 'JPG'
-        })
+
+      // If we have an API key, ask Gemini to find the exact document edges first
+      // (handles full A4 scans/photos with extra background around the card)
+      let box: { x0: number; y0: number; x1: number; y1: number } | null = null
+      let b64 = ''
+      if (apiKey) {
+        setMsg('Detecting document edges...')
+        b64 = await fileToBase64(file)
+        box = await detectDocumentBox(apiKey, b64, file.type)
       }
 
-      const hasKey = apiKeys.gemini || apiKeys.openrouter || apiKeys.groq || apiKeys.huggingface;
-      if (hasKey) {
+      // Crop to the detected box (or full image as fallback), auto-fix brightness/contrast,
+      // then letterbox onto the document canvas size — no more stretching or dark output
+      setMsg('Cropping and enhancing image...')
+      const processed = await processDocumentImage(file, box, { width: 1240, height: 877, quality: 0.92 })
+      setProcessedImageUrl(processed.dataUrl)
+      out.push({
+        label: `${docLabel} JPG`,
+        dataUrl: processed.dataUrl,
+        filename: `${docType}.jpg`,
+        width: 1240, height: 877, dpi: 150, format: 'JPG'
+      })
+
+      // AI extraction if API key provided
+      if (apiKey) {
         setMsg('Extracting document information with AI...')
-        const b64 = await fileToBase64(file)
+        if (!b64) b64 = await fileToBase64(file)
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
-        
-        // --- THE FIX: FORBID FAKE DATA ---
-        const prompt = `Read this ${docLabel} carefully. 
-CRITICAL INSTRUCTION 1: Do NOT guess. If text is blurry, unreadable, or not present, set the value to null. 
-CRITICAL INSTRUCTION 2: Do NOT return dummy or placeholder data (like "Test Name" or 123456789012). It must be real text extracted directly from the image.
-CRITICAL INSTRUCTION 3: Return ONLY raw JSON. No markdown, no conversation, no code fences.
+        const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text.
+
 Extract ONLY these fields: ${fields.join(', ')}.
-Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY format. If you cannot read a field, return null.`
-        // ----------------------------------------
-        
+
+Rules:
+- Return ONLY valid JSON, no other text, no markdown code fences.
+- If a field is unreadable, blurry, or not present, set its value to null — do not guess.
+- For names, use the exact spelling as printed (prefer the English text if shown; transliterate Telugu only if no English version exists).
+- For dates, use DD-MM-YYYY format.
+- For id numbers (Aadhaar/PAN/Voter/Passport), include them exactly as printed, no spaces unless the source has them.`
         try {
-          const response = await callAI(apiKeys, prompt, selectedAi, autoFailover, b64, file.type as any, true)
-          let clean = response.replace(/```json/g, '').replace(/```/g, '').trim();
-          const firstBrace = clean.indexOf('{');
-          const lastBrace = clean.lastIndexOf('}');
-          if (firstBrace !== -1 && lastBrace !== -1) {
-            clean = clean.substring(firstBrace, lastBrace + 1);
-          }
+          const response = await callGemini(apiKey, prompt, b64, file.type as any)
+          const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)
           setSavedApplicant(null)
@@ -125,13 +126,14 @@ Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY forma
           ))}
         </div>
 
-        <UploadZone file={file} onFile={setFile} label={`Upload ${DOC_TYPES.find(d => d.id === docType)?.label}`} accept="image/*,application/pdf" />
+        <UploadZone file={file} onFile={setFile} label={`Upload ${DOC_TYPES.find(d => d.id === docType)?.label}`} />
 
         {file && (
           <div style={{ marginTop: 16 }}>
             <button className="btn btn-primary" onClick={process} disabled={status === 'processing'}>
               {status === 'processing' ? <><span className="spinner" /> Processing...</> : '📋 Extract Document'}
             </button>
+            {!apiKey && <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 12 }}>Add API key for AI text extraction</span>}
           </div>
         )}
       </div>
@@ -157,6 +159,7 @@ Rules: For names, use exact spelling as printed. For dates, use DD-MM-YYYY forma
           extractedData={extractedInfo}
           documentType={docType}
           fileName={file?.name}
+          imageDataUrl={processedImageUrl}
           onSaved={(applicant, document) => setSavedApplicant(applicant)}
           onCancel={() => setExtractedInfo({})}
         />
