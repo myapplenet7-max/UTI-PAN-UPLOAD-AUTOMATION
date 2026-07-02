@@ -67,14 +67,49 @@ export async function callHuggingFace(apiKey: string, prompt: string, imageBase6
   return data?.[0]?.generated_text || '';
 }
 
-// THE MASTER FUNCTION: Call this from your app!
-export async function callAI(apiKey: string, prompt: string, selectedAi: string, imageBase64?: string, imageMime?: string): Promise<string> {
-  switch(selectedAi) {
-    case 'groq': return callGroq(apiKey, prompt, imageBase64, imageMime);
-    case 'openrouter': return callOpenRouter(apiKey, prompt, imageBase64, imageMime);
-    case 'huggingface': return callHuggingFace(apiKey, prompt, imageBase64, imageMime);
-    case 'gemini':
-    default:
-      return callGemini(apiKey, prompt, imageBase64, imageMime);
+// THE MASTER FUNCTION: Supports Manual OR Auto-Failover
+export async function callAI(
+  apiKeys: Record<string, string>, 
+  prompt: string, 
+  selectedAi: string, 
+  autoFailover: boolean,
+  imageBase64?: string, 
+  imageMime?: string
+): Promise<string> {
+  
+  // Define the order to try services
+  const serviceOrder = ['gemini', 'openrouter', 'groq', 'huggingface'];
+  
+  // Start with the user's selected AI
+  let servicesToTry = [selectedAi];
+  
+  // If auto-failover is ON, add all the other services as backups
+  if (autoFailover) {
+    servicesToTry = serviceOrder.filter(s => apiKeys[s] && apiKeys[s].trim() !== '');
   }
+
+  let lastError: any = null;
+
+  for (const service of servicesToTry) {
+    const key = apiKeys[service];
+    if (!key) continue; // Skip if no key is saved for this service
+
+    try {
+      switch(service) {
+        case 'groq': return await callGroq(key, prompt, imageBase64, imageMime);
+        case 'openrouter': return await callOpenRouter(key, prompt, imageBase64, imageMime);
+        case 'huggingface': return await callHuggingFace(key, prompt, imageBase64, imageMime);
+        case 'gemini':
+        default:
+          return await callGemini(key, prompt, imageBase64, imageMime);
+      }
+    } catch (e: any) {
+      lastError = e;
+      console.warn(`Service ${service} failed. Trying next...`, e.message);
+      // Continue to the next service in the loop
+    }
+  }
+
+  // If all services failed
+  throw new Error(`All AI services failed. Last error: ${lastError?.message || 'Unknown error'}`);
 }

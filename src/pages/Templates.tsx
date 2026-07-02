@@ -3,13 +3,13 @@ import { FileSpreadsheet, Plus, Search, User, Loader2, Eye, Save, Download, Chev
 import { getTemplates, saveTemplate, updateTemplate, deleteTemplate, extractPlaceholders, fillTemplate, type Template } from '../lib/templateStorageApi'
 import { searchApplicantsByName, searchApplicantByAadhaar, searchApplicantByPan, getApplicant, type ApplicantSearchResult } from '../lib/applicantsApi'
 import { autoFillFromApplicant } from '../lib/applicantToTemplate'
-import { downloadBlob, callGemini, fileToBase64, extractTextFromPdf } from '../lib/utils'
+import { downloadBlob, fileToBase64, extractTextFromPdf } from '../lib/utils'
 import { callAI } from '../lib/aiApi'
 import { generateDocxBlob, buildDocxFilename } from '../lib/templateToDocx'
 
 type View = 'list' | 'editor' | 'fill'
 
-export default function Templates({ apiKey, selectedAi }: { apiKey?: string; selectedAi?: string }) {
+export default function Templates({ apiKeys, selectedAi, autoFailover }: { apiKeys: any; selectedAi: string; autoFailover: boolean }) {
   const [view, setView] = useState<View>('list')
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,7 +23,7 @@ export default function Templates({ apiKey, selectedAi }: { apiKey?: string; sel
   }
 
   if (view === 'editor') {
-    return (<TemplateEditor template={activeTemplate} apiKey={apiKey} selectedAi={selectedAi || 'gemini'} onSaved={() => { setView('list'); setActiveTemplate(null); load() }} onCancel={() => { setView('list'); setActiveTemplate(null) }} />)
+    return (<TemplateEditor template={activeTemplate} apiKeys={apiKeys} selectedAi={selectedAi} autoFailover={autoFailover} onSaved={() => { setView('list'); setActiveTemplate(null); load() }} onCancel={() => { setView('list'); setActiveTemplate(null) }} />)
   }
   if (view === 'fill' && activeTemplate) {
     return (<TemplateFiller template={activeTemplate} onClose={() => { setView('list'); setActiveTemplate(null) }} />)
@@ -58,7 +58,7 @@ export default function Templates({ apiKey, selectedAi }: { apiKey?: string; sel
   )
 }
 
-function TemplateEditor({ template, apiKey, selectedAi, onSaved, onCancel }: { template: Template | null; apiKey?: string; selectedAi: string; onSaved: () => void; onCancel: () => void }) {
+function TemplateEditor({ template, apiKeys, selectedAi, autoFailover, onSaved, onCancel }: { template: Template | null; apiKeys: any; selectedAi: string; autoFailover: boolean; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(template?.name || '')
   const [content, setContent] = useState(template?.content || '')
   const [saving, setSaving] = useState(false)
@@ -79,7 +79,7 @@ function TemplateEditor({ template, apiKey, selectedAi, onSaved, onCancel }: { t
   }
 
   async function handleAiGenerate() {
-    if (!aiFile || !apiKey) return
+    if (!aiFile || !apiKeys.gemini) return
     setAiStatus('loading'); setAiMsg('Reading document...')
     try {
       let textContent = ''; const mime = aiFile.type
@@ -97,7 +97,8 @@ function TemplateEditor({ template, apiKey, selectedAi, onSaved, onCancel }: { t
         setAiMsg('Sending scanned document to AI...')
         const b64 = await fileToBase64(aiFile)
         const readPrompt = `Read every word of this document carefully. It contains a mix of Telugu and/or English text (if both, read both). Extract the COMPLETE full text of the document, preserving structure, paragraphs, and headings. Return ONLY the plain text content, no commentary.`
-        textContent = await callAI(apiKey, readPrompt, selectedAi, b64, mime)
+        // SMART ROUTING: Force Gemini for Telugu Document Extraction
+        textContent = await callAI(apiKeys, readPrompt, 'gemini', autoFailover, b64, mime)
       }
       setAiMsg('Generating template structure with placeholders...')
       const templatePrompt = `You are a document template generator for government certificates and affidavits. Below is the text of an official document. It may be in Telugu, English, or both.
@@ -111,8 +112,8 @@ Your task:
 Return ONLY the template text with {{PLACEHOLDER}} tokens — no explanation, no JSON, no markdown. Just the raw template string.
 DOCUMENT TEXT:
 ${textContent.slice(0, 15000)}`
-      // We STILL use Gemini for placeholder generation because it's the best
-      const templateText = await callGemini(apiKey, templatePrompt)
+      // We still force Gemini for placeholder generation because it's the best at Telugu
+      const templateText = await callAI(apiKeys, templatePrompt, 'gemini', autoFailover)
       setContent(templateText.trim())
       if (!name.trim()) {
         const firstLine = templateText.split('\n').find(l => l.trim().length > 3 && l.trim().length < 80)
@@ -125,7 +126,7 @@ ${textContent.slice(0, 15000)}`
   return (
     <div className="page">
       <button className="btn btn-ghost" onClick={onCancel} style={{ marginBottom: 16 }}><ChevronLeft size={14} /> Back to Templates</button>
-      {apiKey && (
+      {apiKeys.gemini && (
         <div className="card" style={{ marginBottom: 16, border: '1px solid var(--accent)', background: 'var(--accent-bg)' }}>
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Sparkles size={16} color="var(--accent)" /> AI Template Generator</div>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>Upload any document (PDF, image, Word .docx, or .txt) — AI will read it and auto-generate a reusable template with <code style={{ background: 'var(--bg3)', padding: '1px 4px', borderRadius: 4 }}>{'{{PLACEHOLDERS}}'}</code>.</p>

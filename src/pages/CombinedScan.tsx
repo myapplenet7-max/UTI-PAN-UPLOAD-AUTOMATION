@@ -27,7 +27,7 @@ interface RegionResult {
   regionId: RegionId; label: string; kind: Region['kind']; files: { label: string; dataUrl: string; filename: string; width: number; height: number; dpi: number; format: string }[]; extractedData?: Record<string, any>
 }
 
-export default function CombinedScan({ apiKey, selectedAi, navigate }: { apiKey: string; selectedAi: string; navigate?: (p: any) => void }) {
+export default function CombinedScan({ apiKeys, selectedAi, autoFailover, navigate }: { apiKeys: any; selectedAi: string; autoFailover: boolean; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [imgUrl, setImgUrl] = useState<string | null>(null)
   const [regions, setRegions] = useState<Region[]>(INITIAL_REGIONS)
@@ -88,7 +88,7 @@ export default function CombinedScan({ apiKey, selectedAi, navigate }: { apiKey:
   }
 
   const autoDetectRegions = async () => {
-    if (!file || !apiKey) { setStatus('error'); setMsg('Upload a file and provide an API key for auto-detection.'); return; }
+    if (!file || !apiKeys.gemini) { setStatus('error'); setMsg('Upload a file and provide a Gemini API key for auto-detection.'); return; }
     if (status === 'processing') { setMsg('Already processing, please wait...'); return; }
     setStatus('processing'); setMsg('AI is analyzing the scan to detect Aadhaar, PAN, Voter, Photo, Signature...')
     
@@ -111,7 +111,8 @@ Return a JSON array of objects. Each object MUST have:
 - "box": [x, y, width, height] as percentages (0 to 100) relative to the image width and height.
 Only return the objects you are highly confident about. Do not include items you cannot clearly see. Do not include the entire page.
 Return ONLY valid JSON, do not wrap in code fences.`;
-      const response = await callAI(apiKey, prompt, selectedAi, b64, file.type);
+      // SMART ROUTING: Force Gemini for auto-detection (best spatial vision)
+      const response = await callAI(apiKeys, prompt, 'gemini', autoFailover, b64, file.type);
       const clean = response.replace(/```json|```/g, '').trim();
       const detections = JSON.parse(clean);
       
@@ -149,13 +150,14 @@ Return ONLY valid JSON, do not wrap in code fences.`;
             regionId: region.id, label: region.label, kind: region.kind, 
             files: [{ label: `${region.label} JPG`, dataUrl: processed.dataUrl, filename: `${region.id}.jpg`, width: 1240, height: 877, dpi: 150, format: 'JPG' }] 
           }
-          if (apiKey) {
+          if (apiKeys.gemini || apiKeys.groq) {
             setMsg(`Reading ${region.label} with AI...`)
             try {
               const b64 = await fileToBase64(cropFile)
               const fields = DOC_FIELDS[region.id] || ['name', 'date_of_birth', 'id_number', 'address']
               const prompt = `Read this ${region.label} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
-              const response = await callAI(apiKey, prompt, selectedAi, b64, 'image/jpeg')
+              // SMART ROUTING: Force Groq for simple extraction on cards
+              const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, 'image/jpeg')
               const clean = response.replace(/```json|```/g, '').trim()
               const info = JSON.parse(clean)
               regionResult.extractedData = info
@@ -206,7 +208,7 @@ Return ONLY valid JSON, do not wrap in code fences.`;
   return (
     <div className="page">
       <div className="page-header"><h2><ScanLine size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Combined Scan (Multi-Doc)</h2><p>Upload one A4 page with Aadhaar + PAN + Voter ID + Photo + Signature all on it. Draw a box around each one present — they're auto-cropped, ID cards are AI-read, and everything is saved together under the customer's name.</p><div className="badge-row">{['One Scan → 5 Files', 'AI Extraction', 'Auto-Crop', 'Saved to Neon', 'Files on Vercel Blob'].map(b => (<span className="badge" key={b}>{b}</span>))}</div></div>
-      {!apiKey && (<div className="alert alert-warning">⚠️ Add an API key in the top bar for AI extraction of Aadhaar/PAN/Voter text — cropping & saving still work without it.</div>)}
+      {!apiKeys.gemini && (<div className="alert alert-warning">⚠️ Add a Gemini API key in the top bar for AI extraction of Aadhaar/PAN/Voter text — cropping & saving still work without it.</div>)}
       {!file && (<div className="card"><div className="card-title">Upload Combined Scan</div><UploadZone file={file} onFile={onFile} label="Upload one A4 scan with all documents on it" /></div>)}
       {imgUrl && status !== 'done' && (
         <div className="card">
@@ -221,7 +223,7 @@ Return ONLY valid JSON, do not wrap in code fences.`;
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>{regions.map(r => r.rect && (<button key={r.id} className="btn btn-sm" onClick={() => clearRegion(r.id)} style={{ fontSize: 12 }}>✕ Clear {r.label}</button>))}</div>
           <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={autoDetectRegions} disabled={!apiKey || status === 'processing'}><Sparkles size={14} /> ✨ Auto-Detect Documents</button>
+            <button className="btn btn-primary" onClick={autoDetectRegions} disabled={!apiKeys.gemini || status === 'processing'}><Sparkles size={14} /> ✨ Auto-Detect Documents</button>
             <button className="btn btn-secondary" onClick={processAll} disabled={drawnCount === 0 || status === 'processing'}>{status === 'processing' ? <><span className="spinner" /> Processing...</> : `📋 Crop & Extract ${drawnCount > 0 ? `(${drawnCount})` : ''}`}</button>
             <button className="btn btn-ghost" onClick={() => onFile(file!)}><RefreshCw size={14} /> Reset Regions</button>
           </div>

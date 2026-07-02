@@ -58,17 +58,35 @@ const NAV = [
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('ai_api_key') || '')
-  const [selectedAi, setSelectedAi] = useState(() => localStorage.getItem('selected_ai_service') || 'gemini')
 
-  const saveKey = (k: string) => {
-    setApiKey(k)
-    localStorage.setItem('ai_api_key', k)
+  // Load API Keys from localStorage
+  const [keys, setKeys] = useState(() => {
+    return {
+      gemini: localStorage.getItem('ai_key_gemini') || '',
+      openrouter: localStorage.getItem('ai_key_openrouter') || '',
+      groq: localStorage.getItem('ai_key_groq') || '',
+      huggingface: localStorage.getItem('ai_key_huggingface') || '',
+    }
+  })
+
+  const [selectedAi, setSelectedAi] = useState(() => localStorage.getItem('selected_ai_service') || 'gemini')
+  const [autoFailover, setAutoFailover] = useState(() => localStorage.getItem('ai_auto_failover') === 'true')
+
+  const saveKey = (service: string, value: string) => {
+    const newKeys = { ...keys, [service]: value }
+    setKeys(newKeys)
+    localStorage.setItem(`ai_key_${service}`, value)
   }
 
   const saveAiService = (service: string) => {
     setSelectedAi(service)
     localStorage.setItem('selected_ai_service', service)
+  }
+
+  const toggleFailover = () => {
+    const newVal = !autoFailover
+    setAutoFailover(newVal)
+    localStorage.setItem('ai_auto_failover', String(newVal))
   }
 
   const navigate = (p: Page) => {
@@ -78,17 +96,17 @@ export default function App() {
   }
 
   const renderPage = () => {
-    const props = { apiKey, selectedAi, navigate }
+    const props = { apiKeys: keys, selectedAi, autoFailover, navigate }
     switch (page) {
       case 'dashboard': return <Dashboard navigate={navigate} />
-      case 'photo': return <PhotoExtract apiKey={apiKey} />
-      case 'signature': return <SignatureExtract apiKey={apiKey} />
-      case 'photo-sig': return <PhotoWithSignature apiKey={apiKey} />
+      case 'photo': return <PhotoExtract apiKey={keys.gemini} />
+      case 'signature': return <SignatureExtract apiKey={keys.gemini} />
+      case 'photo-sig': return <PhotoWithSignature apiKey={keys.gemini} />
       case 'document': return <DocumentExtractor {...props} />
       case 'combined-scan': return <CombinedScan {...props} />
       case 'form': return <FormFiller {...props} />
-      case 'correction': return <CorrectionPacket apiKey={apiKey} />
-      case 'newpan': return <NewPanPacket apiKey={apiKey} />
+      case 'correction': return <CorrectionPacket apiKey={keys.gemini} />
+      case 'newpan': return <NewPanPacket apiKey={keys.gemini} />
       case 'pdf': return <PdfTools />
       case 'image': return <ImageTools />
       case 'faq': return <FAQ />
@@ -137,33 +155,54 @@ export default function App() {
 
       <main className="main">
         {/* API Key bar */}
-        <div className="api-key-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
+        <div className="api-key-bar" style={{ padding: '12px 16px', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
             
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>AI Service:</label>
-            <select 
-              value={selectedAi}
-              onChange={(e) => saveAiService(e.target.value)}
-              style={{
-                padding: '6px 12px', borderRadius: 6, background: 'var(--bg3)', 
-                border: '1px solid var(--border)', color: 'var(--text)', fontSize: 13
-              }}
-            >
-              <option value="gemini">Gemini (Google)</option>
-              <option value="openrouter">OpenRouter (Universal)</option>
-              <option value="groq">Groq (Fastest)</option>
-              <option value="huggingface">Hugging Face (Open Source)</option>
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>Select AI:</label>
+              <select 
+                value={selectedAi}
+                onChange={(e) => saveAiService(e.target.value)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, background: 'var(--bg3)', 
+                  border: '1px solid var(--border)', color: 'var(--text)', fontSize: 13
+                }}
+              >
+                <option value="gemini">Gemini (Google)</option>
+                <option value="openrouter">OpenRouter (Universal)</option>
+                <option value="groq">Groq (Fastest)</option>
+                <option value="huggingface">Hugging Face (Open Source)</option>
+              </select>
 
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>API Key:</label>
-            <input
-              type="password"
-              placeholder="sk-..."
-              value={apiKey}
-              onChange={e => saveKey(e.target.value)}
-              style={{ flex: 1, minWidth: '200px', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)' }}
-            />
-            {apiKey && <span style={{ color: 'var(--green)', fontSize: 12 }}>✓ Set</span>}
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text2)', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={autoFailover} 
+                  onChange={toggleFailover}
+                  style={{ accentColor: 'var(--accent)' }}
+                />
+                🤖 Auto-Failover
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {Object.entries(keys).map(([service, key]) => (
+                <div key={service} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, minWidth: '80px', color: 'var(--text2)', textTransform: 'capitalize' }}>
+                    {service}:
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={`Enter ${service} key...`}
+                    value={key}
+                    onChange={e => saveKey(service, e.target.value)}
+                    style={{ flex: 1, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12 }}
+                  />
+                  {key && <span style={{ color: 'var(--green)', fontSize: 12 }}>✓</span>}
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
 

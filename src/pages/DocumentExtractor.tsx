@@ -23,7 +23,7 @@ const DOC_FIELDS: Record<string, string[]> = {
   birth: ['name', 'date_of_birth', 'gender', 'father_name', 'mother_name', 'place_of_birth', 'registration_number'],
 }
 
-export default function DocumentExtractor({ apiKey, selectedAi, navigate }: { apiKey: string; selectedAi: string; navigate?: (p: any) => void }) {
+export default function DocumentExtractor({ apiKeys, selectedAi, autoFailover, navigate }: { apiKeys: any; selectedAi: string; autoFailover: boolean; navigate?: (p: any) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [docType, setDocType] = useState('aadhaar')
   const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle')
@@ -57,13 +57,14 @@ export default function DocumentExtractor({ apiKey, selectedAi, navigate }: { ap
         })
       }
 
-      if (apiKey) {
+      if (apiKeys.gemini || apiKeys.groq) {
         setMsg('Extracting document information with AI...')
         const b64 = await fileToBase64(file)
         const fields = DOC_FIELDS[docType] || ['name', 'date_of_birth', 'id_number', 'address']
         const prompt = `Read this ${docLabel} carefully. The document may contain a mix of Telugu and English text. Extract ONLY these fields: ${fields.join(', ')}. Rules: Return ONLY valid JSON, no other text, no markdown code fences. If a field is unreadable, set its value to null. For names, use the exact spelling as printed (prefer English). For dates, use DD-MM-YYYY format. For id numbers, include them exactly as printed.`
         try {
-          const response = await callAI(apiKey, prompt, selectedAi, b64, file.type as any)
+          // SMART ROUTING: Force Groq for Document Extraction (fastest)
+          const response = await callAI(apiKeys, prompt, 'groq', autoFailover, b64, file.type as any)
           const clean = response.replace(/```json|```/g, '').trim()
           const info = JSON.parse(clean)
           setExtractedInfo(info)
@@ -117,7 +118,7 @@ export default function DocumentExtractor({ apiKey, selectedAi, navigate }: { ap
             <button className="btn btn-primary" onClick={process} disabled={status === 'processing'}>
               {status === 'processing' ? <><span className="spinner" /> Processing...</> : '📋 Extract Document'}
             </button>
-            {!apiKey && <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 12 }}>Add API key for AI text extraction</span>}
+            {!apiKeys.gemini && !apiKeys.groq && <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 12 }}>Add API key for AI text extraction</span>}
           </div>
         )}
       </div>
